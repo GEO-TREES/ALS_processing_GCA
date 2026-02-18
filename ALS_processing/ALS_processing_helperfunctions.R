@@ -1,18 +1,9 @@
 # this script contains helper functions to process lidar data
 # the initial structure was inspired by scripts created by Toby Jackson, Tom Swinfield and Laura Bentley for LAStools processing from R
-# currently, the majority of functions require LAStools (with full license)
 #
-# however, a future version with non-lastools variants is planned:
-#   a) if a lastools path is provided and valid, then use lastools
-#   b) otherwise use the lidR package directly in R
-# 
-# the general idea for most of the functions is
-# - invoke LAStools by sending commands through system() function
-# - set common parameters in a param_general file, including the data input/output paths
-# - create subfolders for each operation that changes the data structure
-# - return the subfolder paths to params_general as new data paths for subsequent processing
-
-# !!! TODO: thoroughly check all existing lidR/lasR alternatives and implement missing ones
+# this version is made as a non-lastools version of the original pipeline.
+# this version is adapted from the 1.0.3 version of the GCA pipeline (with lastools functions)
+# the lastools part are kept but should not be executed if the user set path_lastools = ""
 
 library(Hmisc)
 library(data.table)
@@ -28,9 +19,6 @@ library(parallel) # for custom parallel processing
 library(foreach)
 library(doParallel)
 library(future)
-
-# Andres terrain classification
-# library(SWD)
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%#
 #### 0. Info functions ####
@@ -68,6 +56,7 @@ make.info = function(path_output = "", name_file = "_INFO_.txt", params_general)
       "",
       "   Toby Jackson, Greg Vincent, Becky Morgan, Nicolas Labriere",
       "   Andres Gonzalez-Moreno, Jerome Chave, Maxime Rejou-Mechain",
+      "   Karl Montalban",
       "",
       "## CITATION:",
       "",
@@ -111,7 +100,6 @@ make.info = function(path_output = "", name_file = "_INFO_.txt", params_general)
     
     # Write the content to an INFO.txt file
     writeLines(content_info, con = file_output)
-    
     # cat(name_file,"created at:", path_output,"\n")
   }
 }
@@ -188,7 +176,6 @@ make.info_products = function(path_output = "",name_file = "_INFO_products.csv")
     )
     
     fwrite(products, file = file_output, col.names = T)
-    
     # cat(name_file,"created at:", path_output,"\n")
   }
 }
@@ -354,7 +341,6 @@ make.info_summary_processing = function(path_output = "", name_file = "_INFO_sum
     )
     
     fwrite(summaries, file = file_output, col.names = T)
-    
     # cat(name_file,"created at:", path_output,"\n")
   }
 }
@@ -597,10 +583,6 @@ get.max_raster = function(file_raster){
   max_raster = max(r$z)
   first100 = min(r[1:100]$z)
   return(data.table(file_raster = file_raster, max_raster = max_raster, first100 = first100))
-}
-
-get.crs_lidR = function(path_file){
-  
 }
 
 # function that automatically extracts coordinate reference from path
@@ -978,10 +960,7 @@ lasindex = function(params_general){
       cat("System command could not be completed\n")
     }
   } else {
-    # !!! TOTEST: lidR implementation
     # lidR version, based on laxindex
-    # set_lidr_threads(params_general$n_cores)
-    
     # read in files
     files.input = list.files(path = params_general$path_data,pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     ctg = readLAScatalog(files.input)
@@ -992,9 +971,6 @@ lasindex = function(params_general){
     opt_laz_compression(ctg) = TRUE
     make.catalog_laxindex(ctg)
   }
-  # } else {
-  #   cat("Not enough files. No reindexing performed\n")
-  # }
 }
 
 # try out
@@ -1455,9 +1431,6 @@ get.pulsedensity = function(params_general, path_output = "", type_output = "tif
     # Parallel processing with cluster
     future::plan(future::multisession, workers = params_general$n_cores)
     
-    # -----------------------------
-    # Apply to catalog (chunk-wise)
-    # -----------------------------
     catalog_apply(ctg, function(las_chunk) {
       r <- grid_metrics(las_chunk, ~length(Z), res = step)  # count of points per 1m cell
       rm(las_chunk)
@@ -1465,9 +1438,6 @@ get.pulsedensity = function(params_general, path_output = "", type_output = "tif
       return(r)
     })
     
-    # -----------------------------
-    # Cleanup
-    # -----------------------------
     future::plan(future::sequential)
     
     cat("Pulse density open source done!\n")
@@ -1559,20 +1529,14 @@ get.scanangle_abs = function(params_general, path_output = "", type_output = "ti
     path_output <- params_general$path_output
     if(!dir.exists(path_output)) dir.create(path_output, recursive = TRUE)
     
-    # catalog setup
     ctg <- readLAScatalog(path_data)
     opt_chunk_size(ctg)   <- size_tile
     opt_chunk_buffer(ctg) <- size_buffer
-    set_lidr_threads(1)
     opt_output_files(ctg) <- file.path(path_output, "scanangle_abs_{ID}")
     
-    # parallel
     future::plan(future::multisession, workers = params_general$n_cores)
-    
-    # function
-    process_scan_angle <- function(las_chunk) {
+        process_scan_angle <- function(las_chunk) {
       r <- grid_metrics(las_chunk, ~max(abs(ScanAngle)), res = step)
-      # explicit cleanup
       rm(las_chunk)
       gc()
       return(r)
@@ -1580,7 +1544,6 @@ get.scanangle_abs = function(params_general, path_output = "", type_output = "ti
     
     out_files <- catalog_apply(ctg, process_scan_angle)
     
-    # cleanup
     future::plan(future::sequential)
     gc()
     
@@ -1676,8 +1639,7 @@ get.laserpenetration = function(params_general, path_output = "", type_output = 
       cat("System command could not be completed\n")
     } 
   } else {
-    
-    # !!! TODO: lidR implemetnation
+    #TODO: lidR implemetnation
     
   }
 }
@@ -1790,22 +1752,20 @@ lastile = function(params_general, path_output = "", size_tile = 500, update.pat
     } 
   } else {
     
-    # !!!TOTEST: lidR implementation
-    # this is not necessary in practice, as lidR does this under the hood
-    # cat("LidR package requires input files without buffers. Buffers have been set to zero for retiling\n")
-    
+    # lidR implementation
+    # this might not be necessary in practice, as lidR does this under the hood, to be checked
+
     # read files
     files.input = list.files(path = params_general$path_data,pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     ctg = readLAScatalog(files.input)
     
     # process data
     # opt_filter(ctg) = paste0("-drop_withheld", paste0(" -drop_class 7 18 ", paste(class_rm, collapse = " ")), ifelse(length(exclass_rm) > 0, paste0(" -drop_extended_class ", paste(exclass_rm, collapse = " ")),"")) # new in v.47: remove extra noise classes or otherwise from scan (necessary for IGN France, for example, where artefacts/noise is usually marked with 65, or even 28) # removed due to inconsistency; this is the wrong location for this step
-    # set_lidr_threads(params_general$n_cores)
     opt_output_files(ctg) = paste0(path_output, "/{XLEFT}_{YBOTTOM}")
     opt_progress(ctg) = FALSE # deactivate rendering of progress
     opt_laz_compression(ctg) = TRUE
     opt_chunk_size(ctg) = size_tile
-    opt_chunk_buffer(ctg) = params_general$buffer
+    opt_chunk_buffer(ctg) = params_general$buffer #TODO to be checked
     catalog_retile(ctg)
   }
   
@@ -1871,25 +1831,18 @@ lasinfo = function(params_general, path_output = ""){
     }
   } else {
     
-    # cat("open source info called...\n")
-    # summary_bytile2 = rbindlist(lapply(files.input, summarize.lidR))
-    
     cat("open source info called...\n")
     files.input = list.files(path = params_general$path_data, pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     
-    # Charger les fichiers comme un catalogue
     ctg <- readLAScatalog(files.input)
     
-    # Configuration minimale recommandée
     opt_chunk_size(ctg) <- 0  # traiter par fichier (mode normal)
     opt_chunk_buffer(ctg) <- 0
     opt_progress(ctg) <- TRUE
     opt_independent_files(ctg) <- TRUE
     
-    # Parallélisation future
     future::plan(future::multisession, workers = params_general$n_cores)
     
-    # Exécution
     res_list <- catalog_apply(ctg, ctg_summarize_chunk)
     summary_bytile <- rbindlist(res_list, use.names = TRUE, fill = TRUE)
     
@@ -2008,9 +1961,6 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
   } else {
     cat("lasduplicate open source called...\n")
     
-    browser()
-    browser()
-    
     lasduplicate_custom_function <- function(file, path_output) {
       
       output_filename <- file.path(path_output, paste0(tools::file_path_sans_ext(basename(file)), ".laz"))
@@ -2021,7 +1971,7 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
         pipeline,
         on = file,
         ncores = 1,
-        with = list(chunk = 100),
+        with = list(chunk = 100), #TODO check how to use size_tile instead
         progress = T
       )
     }
@@ -2045,15 +1995,6 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
     }
     
     stopCluster(cl)
-    
-    # # OLD
-    # drop_duplicates_pipeline = reader(filter = drop_duplicates()) + write_las(paste0(path_output, "/*.laz"))
-    # 
-    # exec(drop_duplicates_pipeline,
-    #      on = params_general$path_data,
-    #      ncores = params_general$n_cores,
-    #      with = list(chunk = size_tile),
-    #      progress = FALSE)
     
     cat("lasduplicate open source done!\n")
   }
@@ -2109,7 +2050,6 @@ lasnoise = function(params_general, path_output = "", step = 3, isolated = 3, up
     } 
     
   } else {
-    # set_lidr_threads(params_general$n_cores)
     
     files.input = list.files(path = params_general$path_data,pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     ctg = readLAScatalog(files.input)
@@ -2117,7 +2057,7 @@ lasnoise = function(params_general, path_output = "", step = 3, isolated = 3, up
     opt_filter(ctg) = "-drop_withheld"
     opt_chunk_buffer(ctg) = params_general$buffer
     opt_output_files(ctg) = paste0(path_output,"/{*}")
-    opt_progress(ctg) = FALSE # deactivate rendering of progress
+    opt_progress(ctg) = FALSE
     opt_laz_compression(ctg) = TRUE
     classify_noise(ctg, ivf(res = step, n = isolated))
   }
@@ -2173,6 +2113,7 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
     } 
   } else {
     
+    #TODO: Location to test PTD in the future
     # --- Catalog setup ---
     files.input <- list.files(path = params_general$path_data, pattern = paste0("\\.", params_general$type_file, "$"), full.names = TRUE)
     ctg <- readLAScatalog(files.input)
@@ -2184,33 +2125,13 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
     opt_laz_compression(ctg) <- TRUE
     opt_progress(ctg) <- TRUE
     
-    # --- Parallel setup ---
     future::plan(future::multisession, workers = params_general$n_cores)
     
-    # --- Ground classification ---
     lidR::classify_ground(
       ctg,
-      csf(cloth_resolution = ifelse(!is.null(step), step, 1.0))
-    )
+      csf(cloth_resolution = ifelse(!is.null(step), step, 1.0)))
     
     future::plan(future::sequential)
-    
-    # # !!! TODO/TOTEST: lidR version
-    # # classify_ground works differently in lidR package than in LAStools, so parameters for algorithms need to be carefully tested for robustness across scans
-    # set_lidr_threads(params_general$n_cores)
-    # 
-    # # read files
-    # files.input = list.files(path = params_general$path_data, pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
-    # ctg = readLAScatalog(files.input)
-    # 
-    # # process
-    # opt_filter(ctg) <- "-drop_withheld -remove_noise"
-    # opt_chunk_size(ctg) <- 0
-    # opt_chunk_buffer(ctg) <- size_buffer
-    # opt_output_files(ctg) <- paste0(path_output,"/{*}")
-    # opt_progress(ctg) <- T
-    # opt_laz_compression(ctg) <- TRUE
-    # classify_ground(ctg, csf(cloth_resolution = ifelse(!is.null(step), step, 1.0)))
   }
   
   if(params_general$cleanup == T) cleanup.files(params_general$path_data)
@@ -2842,8 +2763,6 @@ reclassify.tile = function(index_tile, files_groundlowest, params_general, odix 
   
   file.copy(files_groundlowest_adjacent$path_refine, file.path(tmpdir_tile,basename(files_groundlowest_adjacent$path_refine)))
   
-  
-  
   unlink(tmpdir_tile,recursive = T)
   
   return(file.path(dir_current,gsub(paste0(".",params_general$type_file),paste0(odix,".laz"),basename(tile_pointcloud), fixed = T)))
@@ -2856,7 +2775,7 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
   
   # define output directory
   if(path_output == ""){
-    path_output = file.path(params_general$path_data,paste0("height_lim",height_lim))
+    path_output = file.path(params_general$path_data,paste0("height_lim", height_lim))
   }
   if(!dir.exists(path_output)) dir.create(path_output)
   
@@ -2880,12 +2799,6 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
   } else {
     cat("filter.height open source called...\n")
     
-    # WTF ???
-    # Limit height
-    # make.dtm_nooverhangs(params_general = params_general, path_output = "", path_products = file.path(params_general$path_data, "dtm_tmp"), name_raster = "dtm_tmp", kill = 200, step = resolution, type_output = "tif", threshold_drop = 10, classes_ground = "2 8",arguments_additional = "")
-    # las2dem(params_general = params_general, path_output = "", name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", option = "dtm")
-    #
-    
     tri <- triangulate(filter = keep_ground_and_water())
     extra <- add_extrabytes("int", "HAG", "Height Above Ground")
     trans <- transform_with(tri, store_in_attribute = "HAG")
@@ -2902,8 +2815,7 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
       
       lasR::reader_las() + tri + extra + trans +
       
-      # write the point clouds with ground and noise points classified
-      write_las(paste0(path_output, "/*.laz"), filter = filter_HAG(125.0))
+      write_las(paste0(path_output, "/*.laz"), filter = filter_HAG(125.0)) #TODO use parameter height_lim
     
     exec(filter_height_pipeline,
          on = params_general$path_data,
@@ -2912,7 +2824,6 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
          progress = TRUE)
     
     cat("filter.height open source done!\n")
-    
   }
   
   if(params_general$cleanup == T) cleanup.files(params_general$path_data)
@@ -2954,7 +2865,7 @@ downsample = function(params_general, path_output = "", pd_downsampling = 2, upd
       )
     )
   } else {
-    # !!! TODO: lidR version
+    # TODO: lidR version
   }
   
   if(params_general$cleanup == T) cleanup.files(params_general$path_data)
@@ -3213,8 +3124,7 @@ make.dtm_nooverhangs = function(params_general, path_output = "", path_products 
   {
     cat("\nGenerate dtm_nooverhangs open source called...\n")
     tiles_pointcloud = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
-    # files_names.input = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = F)
-    
+
     ctg <- readLAScatalog(tiles_pointcloud)
     opt_chunk_size(ctg) <- size_tile
     opt_chunk_buffer(ctg) <- size_buffer
@@ -3233,23 +3143,6 @@ make.dtm_nooverhangs = function(params_general, path_output = "", path_products 
     
     future::plan(future::sequential)
     if(params_general$cleanup == T) file.remove(dtm_tiles)
-    
-    # OLD
-    # del = triangulate(filter = keep_ground())
-    # dtm = rasterize(1.0, del)
-    # pipeline = del + dtm
-    # 
-    # original_dtm_pipeline = reader() +
-    #   
-    #   del + dtm
-    # 
-    # total_raster = exec(original_dtm_pipeline,
-    #                     on = params_general$path_data,
-    #                     ncores = 8,
-    #                     with = list(chunk = 250),
-    #                     progress = TRUE)
-    # 
-    # writeRaster(total_raster, filename = file.path(path_products, paste0(name_raster, ".tif")), overwrite = T)
     
     #params_general$path_data = path_output
     params_general$type_file = "laz"
@@ -3386,7 +3279,6 @@ make.dtm_highest = function(params_general, path_output = "", name_raster = "dtm
     tiles_pointcloud = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
     files_names.input = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = F)
     
-    # --- Setup catalog ---
     ctg <- readLAScatalog(tiles_pointcloud)
     opt_output_files(ctg) <- file.path(path_output, "Chunk_{ID}_dtm_highest")
     opt_chunk_size(ctg) <- size_tile
@@ -3394,7 +3286,6 @@ make.dtm_highest = function(params_general, path_output = "", name_raster = "dtm
     opt_filter(ctg) <- "-keep_class 2"
     opt_progress(ctg) <- T
     
-    # --- Parallel plan ---
     future::plan(future::multisession, workers = params_general$n_cores)
     
     zmax_catalog <- catalog_apply(ctg, function(las_chunk) {
@@ -3410,24 +3301,7 @@ make.dtm_highest = function(params_general, path_output = "", name_raster = "dtm
     
     future::plan(future::sequential)
     
-    # Clean up intermediate rasters OR KEEP IN TMP FOLDER ?????
     if (params_general$cleanup == T) file.remove(dtm_highest_files)
-    
-    # OLD    
-    # for(i in 1:length(tiles_pointcloud))
-    # {
-    #   
-    #   original_dtm_pipeline = reader(filter = keep_ground()) +
-    #     
-    #     rasterize(step, "z_max", ofile = file.path(path_output, paste0(tools::file_path_sans_ext(files_names.input[i]),".tif")))
-    #   
-    #   exec(original_dtm_pipeline,
-    #        on = tiles_pointcloud[i],
-    #        ncores = params_general$n_cores,
-    #        with = list(chunk = 250),
-    #        progress = FALSE)
-    #   
-    # }
     
     #params_general$path_data = path_output
     params_general$type_file = "laz"
@@ -3470,13 +3344,11 @@ make.dsm_highest = function(params_general, path_output = "", name_raster = "dsm
   {
     cat("\nGenerate make.dsm_highest lidR version called...\n")
     
-    # --- Input setup ---
     tiles_pointcloud <- list.files(params_general$path_data, pattern = paste0("\\.", params_general$type_file, "$"), full.names = TRUE)
     path_output <- path_output
     size_tile <- size_tile
     resolution <- resolution
     
-    # --- Setup catalog ---
     ctg <- readLAScatalog(tiles_pointcloud)
     opt_output_files(ctg) <- file.path(path_output, "Chunk_{ID}_dsm_highest")
     opt_chunk_size(ctg) <- size_tile
@@ -3485,10 +3357,8 @@ make.dsm_highest = function(params_general, path_output = "", name_raster = "dsm
     opt_filter(ctg) <- "-keep_first"
     opt_laz_compression(ctg) <- TRUE
     
-    # --- Parallel plan ---
     future::plan(future::multisession, workers = params_general$n_cores)
     
-    # --- Define DSM function (max height per cell) ---
     make_dsm_highest <- function(las_chunk, ...) {
       las <- readLAS(las_chunk)
       if (is.empty(las)) return(NULL)
@@ -3500,31 +3370,10 @@ make.dsm_highest = function(params_general, path_output = "", name_raster = "dsm
       return(r)
     }
     
-    # --- Apply on catalog ---
     catalog_apply(ctg, make_dsm_highest)
     
-    # --- Cleanup ---
     future::plan(future::sequential)
     gc()    
-    
-    # cat("\nGenerate make.dsm_highest open source called...\n")
-    # tiles_pointcloud = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
-    # files_names.input = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = F)
-    # 
-    # for(i in 1:length(tiles_pointcloud))
-    # {
-    #   original_dtm_pipeline = lasR::reader() +
-    #     
-    #     lasR::triangulate(filter = keep_first()) +
-    #     
-    #     lasR::rasterize(step, ofile = file.path(path_output, paste0(tools::file_path_sans_ext(files_names.input[i]),".tif")))
-    #   
-    #   exec(original_dtm_pipeline,
-    #        on = tiles_pointcloud[i],
-    #        ncores = params_general$n_cores,
-    #        with = list(chunk = size_tile),
-    #        progress = FALSE)
-    # }
     
     #params_general$path_data = path_output
     params_general$type_file = "laz"
@@ -3689,28 +3538,21 @@ make.chm_pitfree = function(params_general, path_output = "", name_raster = "chm
     if(params_general$cleanup == T) cleanup.files(tmp_processing)
     
   } else {
-    # !!! TODO/TOTEST: lidR version
     # first normalize height
-    # set_lidr_threads(params_general$n_cores)
-    
-    # read files
     files.input = list.files(path = params_general$path_data,pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     ctg = readLAScatalog(files.input)
     
-    # process
     opt_filter(ctg) = "-drop_withheld"
     opt_chunk_buffer(ctg) = params_general$buffer
     opt_output_files(ctg) = paste0(path_output,"/{*}")
-    opt_progress(ctg) = FALSE # deactivate rendering of progress
+    opt_progress(ctg) = FALSE
     
-    # normalize
     normalize_height(ctg, algorithm = tin(), res = step) # no kill option
     
-    # read files again
+    # rasterize canopy
     files.input.normalized = list.files(path = params_general$path_data,pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     ctg.normalized = readLAScatalog(files.input.normalized)
     
-    # process
     opt_filter(ctg.normalized) = "-drop_withheld"
     opt_chunk_buffer(ctg.normalized) = params_general$buffer
     opt_output_files(ctg.normalized) = paste0(path_output,"/{*}")
@@ -3727,13 +3569,11 @@ make.dsm_spikefree_adaptive = function(tile_pointcloud, params_general, dir_proc
   
   cat("Processing", basename(tile_pointcloud),"\n")
   
-  
   # now we write it out to the original directory
   file_dsm_spikefree_tile = file.path(dir_processing,gsub(".laz",".tif",basename(tile_pointcloud)))
   
   if(!file.exists(file_dsm_spikefree_tile))
   {
-    
     # new in v.42, used to tackle problem with high-density point clouds
     # cf. https://groups.google.com/g/lastools/c/oY2gcW6w7HY/m/37zx06aJAQAJ
     factor_scale = NULL
@@ -3923,7 +3763,6 @@ make.dsm_spikefree_adaptive = function(tile_pointcloud, params_general, dir_proc
             timeout = timeout_lspikefree
           )
         }
-        
         
         # recompute if spikefree aborted due to timeout
         # try out different combinations: sorting in different ways, or adding noise in increasing levels (20% of perturbation_max, 50% or 100%)
@@ -4395,7 +4234,7 @@ compute.sumstats_pc = function(params_general, path_output = "", resolution = 10
 
 # this is the function that does all the heavy lifting
 # applied to every data subset and processing the las files in it
-# !!! TODO: should be split into smaller chunks
+# TODO: should be split into smaller chunks
 
 process.datasubset = function(path_lastools, path_tmp, path_input, path_output, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = ""){
   
@@ -4618,7 +4457,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
     nberrors = 0
     for(i in 1:length(clusters_data)){
       
-      # i = 1
       #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
       cat("\nPROCESSING CLUSTER",i,"\n")
       #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -4681,6 +4519,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             
           } 
           else if(retile == T){
+            # TODO
             # step_processing = paste0("retiling")
             # cat("\nLasindex\n")
             # lasindex(params_general)
@@ -4724,10 +4563,9 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             ctg <- readLAScatalog(params_general$path_data)
             crs_scan <- crs(ctg)
             
-            opt_chunk_size(ctg)   <- size_tile   # process chunks size
-            opt_chunk_buffer(ctg) <- size_buffer    # buffer for edge artifacts
+            opt_chunk_size(ctg)   <- size_tile
+            opt_chunk_buffer(ctg) <- size_buffer
             opt_output_files(ctg) <- file.path(path_output_local, "chunk_{ID}_initial_classif")
-            set_lidr_threads(1)   # internal threads per chunk
             opt_progress(ctg) <- T
             
             future::plan(future::multisession, workers = params_general$n_cores)
@@ -4763,7 +4601,8 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
               crs_scan = gsub("overwrite.with:", "", metadata$acq_crs, fixed = T) # new in v.47: allow an overwrite.with option
               terra::crs(classifications) = crs_scan
             } else {
-              # terra::crs(classifications) = crs_scan
+              # TODO
+              terra::crs(classifications) = crs_scan
             }
           }
           
@@ -4990,7 +4829,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
               writeRaster(scanangle, filename = file.path(path_output,paste0("scanangle_abs",addendum_name,".tif")), overwrite = T)
               
               if (params_general$cleanup == T) file.remove(files_scanangle)
-              
               
             }
             , error = function(e){
@@ -5239,7 +5077,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             }
             
             writeRaster(dsm_tin, filename = file.path(path_output,paste0("dsm_tin",addendum_name,".tif")), overwrite = T)
-            
             
             chm_tin = dsm_tin - dtm; terra::crs(chm_tin) = crs_scan
             chm_tin = clamp(chm_tin, lower = 0, values = T)
@@ -5696,9 +5533,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 # - tmpdir_processing: the directory for processing
 # - name_job: name of current job (in case data set is processed several times, use v1, v2, or similar)
 
-
-
-# !!! TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
+# TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
 process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
   
   if(logfile != "" & dir.exists(dirname(logfile))){

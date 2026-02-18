@@ -19,7 +19,7 @@
 # ADDITIONAL CONTRIBUTORS TO DEVELOPMENT:",
 #
 #   Toby Jackson, Greg Vincent, Becky Morgan, Nicolas Labriere",
-#   Andres Gonzalez-Moreno, Jerome Chave, Maxime Rejou-Mechain",
+#   Andres Gonzalez-Moreno, Jerome Chave, Maxime Rejou-Mechain, Karl Montalban",
 #
 # CITATION:
 #
@@ -67,32 +67,39 @@
 # update.packages()
 
 # set working directory
-path = "/home/andres/work/projects/GEO-TREES/03-development/GCA/ALS_processing/v.1.1.0"
+this_file = grep("^--file=", commandArgs(), value = TRUE)
+this_file = gsub("^--file=", "", this_file)
+if(length(this_file) == 0) this_file = rstudioapi::getSourceEditorContext()$path
+path = dirname(this_file)
 setwd(path)
 
 # load helper functions
-file_helperfunctions = "./ALS_processing_helperfunctions_v.1.1.0.R"
+file_helperfunctions = "./ALS_processing_helperfunctions.R"
 source(file_helperfunctions)
+
+# Redirect normal output
+# log_file = "./log.txt"
+# sink(log_file)
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 ##### 2. Processing parameters (fixed tile size) #####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 # standard processing script, using a fixed tile size
-name_job = "gca"                               # overall job name, used for processing stats
+name_job = "gca"  # overall job name, used for processing stats
 type_file = "laz" # type of the files to be processed, needs to be exact (las, laz, LAS, etc.)
-dir_dataset = "/media/andres/DATA/Lidar/ALS/test/light/BCI"                    # folder that contains data sets
-dir_processed =  "/home/andres/work/projects/GEO-TREES/03-development/GCA/ALS_processing/v.1.1.0/processed"      # folder where processed data sets should be saved
+dir_dataset = "/home/karl/work/data/America/America_SAm_FG_CEBA_ALTOA_ALS/Nouragues/2022/01_raw" # folder that contains data sets
+dir_processed =  "../03_processed_Nouragues"      # folder where processed data sets should be saved
 path_lastools = "" # folder to most recent lastools installation
-tmpdir_processing = "/home/andres/work/projects/GEO-TREES/03-development/GCA/ALS_processing/v.1.1.0/tmp"   #!!!: folder where processing occurs: files will be overwritten and should never be a folder that is synchronized or has slow read/write operations, i.e., no Dropbox folders, no OneDrive, and not an external hard drive
+tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_Nouragues"   #!!!: folder where processing occurs: files will be overwritten and should never be a folder that is synchronized or has slow read/write operations, i.e., no Dropbox folders, no OneDrive, and not an external hard drive
 resolution = 1.0       # resolution of raster products (in m)
-n_cores = 20         # number of cores for processing, keep 1-2 cores available for system operations
+n_cores = 15         # number of cores for processing, keep 1-2 cores available for system operations
 size_tile = 250        # retiling size
 size_buffer = 50       # 25m - 50m, 50 m should be sufficient for any type of acquisition (25m may be too small for  ground point classification in sparse scans)
 force.utm = "from_metadata"          # force reprojection of system into UTM (and meter) coordinates; necessary for all files that are registered in feet, otherwise output will be in feet
-force.recompute = T    # force reprocessing; usually set to FALSE, useful when computation has been interrupted for external reasons (power cutofff) and needs to be restarted, because only unprocessed data subsets will be reprocessed
-remove.vlr = T    # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all vlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating vlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
-remove.evlr = T   # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all evlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating evlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
-use.blast2dem = F # should be activated by default as it improves (or makes possible) TIN construction in very dense point clouds, but: not tested on Linux so far
+force.recompute = F    # force reprocessing; usually set to FALSE, useful when computation has been interrupted for external reasons (power cutofff) and needs to be restarted, because only unprocessed data subsets will be reprocessed
+remove.vlr = F    # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all vlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating vlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
+remove.evlr = F   # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all evlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating evlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
+use.blast2dem = T # should be activated by default as it improves (or makes possible) TIN construction in very dense point clouds, but: not tested on Linux so far
 type_architecture = "64" # only needed if 32bit Windows should be forced; 32 can be a bit more permissive, particularly for blast2dem
 
 results = process.dataset(
@@ -109,10 +116,10 @@ results = process.dataset(
   , force.utm = force.utm
   , remove.vlr = remove.vlr
   , remove.evlr = remove.evlr
-  , type_architecture = type_architecture 
+  , type_architecture = type_architecture
   , use.blast2dem = use.blast2dem
   , patterns_skip = c() # skipping the processing of some folders
-  , cleanup = F
+  , cleanup = T
 )
 
 # # other parameters
