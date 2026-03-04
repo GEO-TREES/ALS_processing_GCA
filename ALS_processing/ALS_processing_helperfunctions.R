@@ -1535,7 +1535,7 @@ get.scanangle_abs = function(params_general, path_output = "", type_output = "ti
     opt_output_files(ctg) <- file.path(path_output, "scanangle_abs_{ID}")
     
     future::plan(future::multisession, workers = params_general$n_cores)
-        process_scan_angle <- function(las_chunk) {
+    process_scan_angle <- function(las_chunk) {
       r <- grid_metrics(las_chunk, ~max(abs(ScanAngle)), res = step)
       rm(las_chunk)
       gc()
@@ -1754,7 +1754,7 @@ lastile = function(params_general, path_output = "", size_tile = 500, update.pat
     
     # lidR implementation
     # this might not be necessary in practice, as lidR does this under the hood, to be checked
-
+    
     # read files
     files.input = list.files(path = params_general$path_data,pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     ctg = readLAScatalog(files.input)
@@ -1836,7 +1836,7 @@ lasinfo = function(params_general, path_output = ""){
     
     ctg <- readLAScatalog(files.input)
     
-    opt_chunk_size(ctg) <- 0  # traiter par fichier (mode normal)
+    opt_chunk_size(ctg) <- 0  # file-by-file
     opt_chunk_buffer(ctg) <- 0
     opt_progress(ctg) <- TRUE
     opt_independent_files(ctg) <- TRUE
@@ -1925,7 +1925,7 @@ summarize.lasinfo = function(path){
 
 # deduplicate data
 # strict scheme is applied, i.e. only exact duplicates (x, y, z) are removed, and not just x y duplicates (default in LAStools)
-lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
+lasduplicate = function(params_general, path_output = "",  update.path = TRUE, size_tile = 250){
   
   # define output directory
   if(path_output == ""){
@@ -1959,9 +1959,10 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
     lasindex(params_general)
     
   } else {
+    
     cat("lasduplicate open source called...\n")
     
-    lasduplicate_custom_function <- function(file, path_output) {
+    lasduplicate_custom_function <- function(file, path_output, size_tile) {
       
       output_filename <- file.path(path_output, paste0(tools::file_path_sans_ext(basename(file)), ".laz"))
       
@@ -1970,8 +1971,8 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
       lasR::exec(
         pipeline,
         on = file,
-        ncores = 1,
-        with = list(chunk = 100), #TODO check how to use size_tile instead
+        ncores = params_general$n_cores,
+        with = list(chunk = size_tile), #TODO check how to use size_tile instead
         progress = T
       )
     }
@@ -1985,17 +1986,17 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
     # --- 4. Run parallel loop ---
     foreach(
       filename = files,
-      .combine = c,
-      .packages = c("lasR", "tools"),
-      .export = c("lasduplicate_custom_function")
+      .combine = c
+      # .packages = c("lasR", "tools"),
+      # .export = c("lasduplicate_custom_function")
     ) %dopar% {
       lasduplicate_custom_function(
         file = filename,
-        path_output = path_output)
+        path_output = path_output,
+        size_tile = size_tile)
     }
     
     stopCluster(cl)
-    
     cat("lasduplicate open source done!\n")
   }
   
@@ -3124,18 +3125,18 @@ make.dtm_nooverhangs = function(params_general, path_output = "", path_products 
   {
     cat("\nGenerate dtm_nooverhangs open source called...\n")
     tiles_pointcloud = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
-
+    
     ctg <- readLAScatalog(tiles_pointcloud)
     opt_chunk_size(ctg) <- size_tile
     opt_chunk_buffer(ctg) <- size_buffer
     opt_progress(ctg) <- T
-    opt_output_files(ctg) <- file.path(params_general$path_data, "{ID}_dtm_nooverhangs")
+    opt_output_files(ctg) <- file.path(params_general$path_data, paste0(name_raster, "/{ID}_dtm_nooverhangs"))
     
     future::plan(future::multisession, workers = params_general$n_cores)
     
     cat("lidR::rasterize_terrain()")
     dtm <- rasterize_terrain(ctg, res = resolution, algorithm = tin())
-    dtm_tiles <- list.files(params_general$path_data, pattern = "_dtm_nooverhangs\\.tif$", full.names = TRUE)
+    dtm_tiles <- list.files(file.path(params_general$path_data, name_raster), pattern = "_dtm_nooverhangs\\.tif$", full.names = TRUE)
     dtm = terra::vrt(dtm_tiles)
     terra::writeRaster(dtm,
                        filename = file.path(path_products, paste0(name_raster, ".tif")),
