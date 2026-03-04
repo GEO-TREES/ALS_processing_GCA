@@ -19,3 +19,4 @@ Fischer, F. J., Jackson, T., Vincent, G., & Jucker, T. (2024). Robust characteri
 A recent worked example with v.1.0.2 of the pipeline is available on Zenodo. It uses scans from multiple years of Dutch ALS campaigns (AHN2-5): https://zenodo.org/records/14722001
 
 Data and code for the original paper in Methods in Ecology and Evolution can be found here: https://zenodo.org/records/10878070. Note that the pipeline has been updated since then, with improved error handling. It can also now be run on Linux, so using newer versions in this repository is strongly recommended.
+
