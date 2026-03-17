@@ -1002,81 +1002,82 @@ lasinfo.repair =  function(params_general){
 # can also be used to force to UTM
 las2las.initial = function(params_general, metadata, size_tile, path_output = "", force.utm = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, angle_lim = NULL, update.path = TRUE, class_rm = "", exclass_rm = "", type_point = NULL){
   
+  browser()
+  browser()
+  
   # define output directory
   if(path_output == ""){
     path_output = file.path(params_general$path_data,"las2las")
   }
   if(!dir.exists(path_output)) dir.create(path_output)
   
-  # pass lastools command to system
+  # # pass lastools command to system
   if(!is.voidstring(params_general$path_lastools)){
-    return_system = system(
-      paste(
-        file.path.system(type_os = params_general$type_os, params_general$path_lastools, update.command_lastools("las2las", type_architecture = params_general$type_architecture)),
-        "-i",
-        file.path.system(type_os = params_general$type_os, params_general$path_data,paste0("*.",params_general$type_file)),
-        "-cores", params_general$n_cores,
-        "-drop_withheld",
-        paste0("-drop_class 7 18 ", class_rm), # noise classes (noise / high noise) # new in v.47: remove extra noise classes or otherwise from scan (necessary for IGN France, for example, where artefacts/noise is usually marked with 65, or even 28)
-        ifelse(nchar(exclass_rm) > 0, paste0("-drop_extended_class ", exclass_rm),""), # new in v.47: remove extra noise classes or otherwise from scan (necessary for IGN France, for example, where artefacts/noise is usually marked with 65, or even 28)
-        "-crop_to_bounding_box", # remove xy outliers
-        ifelse(remove.vlr == T,"-remove_all_vlrs",""),
-        ifelse(remove.evlr == T,"-remove_all_evlrs",""),
-        ifelse(force.utm == T,"-target_utm auto",""),
-        ifelse(!is.null(factor_rescale),paste("-rescale",factor_rescale,factor_rescale,factor_rescale,sep = " "),""),
-        ifelse(!is.null(angle_lim),paste("-drop_abs_scan_angle_above", angle_lim, sep = " "),""),
-        ifelse(!is.null(type_point), paste0("-set_point_type ",type_point),""), # remove any RGB or other information
-        "-odir", file.path.system(type_os = params_general$type_os, path_output),
-        "-olaz",
-        ifelse(params_general$type_os == "Linux","2>&1", "") # crucial for Linux where LAStools seems to write to stderr
-      )
+  return_system = system(
+    paste(
+      file.path.system(type_os = params_general$type_os, params_general$path_lastools, update.command_lastools("las2las", type_architecture = params_general$type_architecture)),
+      "-i",
+      file.path.system(type_os = params_general$type_os, params_general$path_data,paste0("*.",params_general$type_file)),
+      "-cores", params_general$n_cores,
+      "-drop_withheld",
+      paste0("-drop_class 7 18 ", class_rm), # noise classes (noise / high noise) # new in v.47: remove extra noise classes or otherwise from scan (necessary for IGN France, for example, where artefacts/noise is usually marked with 65, or even 28)
+      ifelse(nchar(exclass_rm) > 0, paste0("-drop_extended_class ", exclass_rm),""), # new in v.47: remove extra noise classes or otherwise from scan (necessary for IGN France, for example, where artefacts/noise is usually marked with 65, or even 28)
+      "-crop_to_bounding_box", # remove xy outliers
+      ifelse(remove.vlr == T,"-remove_all_vlrs",""),
+      ifelse(remove.evlr == T,"-remove_all_evlrs",""),
+      ifelse(force.utm == T,"-target_utm auto",""),
+      ifelse(!is.null(factor_rescale),paste("-rescale",factor_rescale,factor_rescale,factor_rescale,sep = " "),""),
+      ifelse(!is.null(angle_lim),paste("-drop_abs_scan_angle_above", angle_lim, sep = " "),""),
+      ifelse(!is.null(type_point), paste0("-set_point_type ",type_point),""), # remove any RGB or other information
+      "-odir", file.path.system(type_os = params_general$type_os, path_output),
+      "-olaz",
+      ifelse(params_general$type_os == "Linux","2>&1", "") # crucial for Linux where LAStools seems to write to stderr
     )
+  )
     
     lasindex(params_general)
   } else {
-    
+
     cat("las2las.initial OpenSource version!\n")
+
+    # drop noise, withheld, high returns
+    # TODO:
+    # - add metadata/fields filter
+    # - keep withheld ?
+    # - remove foreach
+
+    angle_lim = NULL
     
-    las2las_custom_function <- function(file, path_output, angle_lim = "", metadata, size_tile) {
-      output_filename <- file.path(path_output, paste0(tools::file_path_sans_ext(basename(file)), ".laz"))
-      
-      epsg_code <- as.numeric(strsplit(metadata$acq_crs, split = ":")[[1]][2])
-      
-      clean_data_pipeline <-  lasR::reader(
-        filter = paste(
-          "-drop_abs_scan_angle_above", ifelse(!is.null(angle_lim), angle_lim, ""),
-          "-drop class 7 18",
-          "-keep_return 1 2 3 4 5 6 7",
-          "-drop_number_of_returns 14",
-          "-drop_number_of_returns 13",
-          "-drop_number_of_returns 12",
-          "-drop_number_of_returns 11",
-          "-drop_number_of_returns 10",
-          "-drop_number_of_returns 9",
-          "-drop_number_of_returns 8",
-          "-drop_withheld"
-        )
-      ) + lasR::set_crs(epsg_code) + lasR::write_las(output_filename, keep_buffer = FALSE)
-      
-      lasR::exec(
-        clean_data_pipeline,
-        on = file,
-        ncores = params_general$n_cores,
-        with = list(chunk = size_tile),
-        progress = T
-      )
-    }
+    filter = c(ifelse(!is.null(angle_lim), paste("-drop_abs_scan_angle_above", angle_lim, sep = " "),""),
+              "classification %out% 7 18",
+              "-drop_withheld")
     
-    cl <- makeCluster(params_general$n_cores)
-    registerDoParallel(cl)
-    
+    output_filename <- file.path(path_output, "*.laz")
+
+    epsg_code <- as.numeric(strsplit(metadata$acq_crs, split = ":")[[1]][2])
+
+    clean_data_pipeline <-  lasR::reader(
+      filter = filter
+    ) + lasR::set_crs(epsg_code) + lasR::write_las(output_filename)
+
     files <- list.files(params_general$path_data, pattern = paste0("\\.", type_file), full.names = TRUE)
+
+    lasR::exec(
+      clean_data_pipeline,
+      on = files,
+      ncores = params_general$n_cores,
+      progress = T
+    )
     
-    foreach(filename = files, .combine = c) %dopar% {
-      las2las_custom_function(filename, path_output, angle_lim, metadata, size_tile)
-    }
-    
-    stopCluster(cl)
+    # cl <- makeCluster(params_general$n_cores)
+    # registerDoParallel(cl)
+    # 
+    # 
+    # foreach(filename = files, .combine = c) %dopar% {
+    #   las2las_custom_function(filename, path_output, angle_lim, metadata, size_tile)
+    # }
+    # 
+    # stopCluster(cl)
   }
   
   if(update.path == TRUE){
@@ -1112,6 +1113,9 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
 # nbclusters_forced = 10
 
 find.clusters_data = function(params_general, path_output = "", nbclusters_forced = NULL){
+  
+  browser()
+  browser()
   
   files_tocluster = list.files(params_general$path_data, pattern = paste0("\\.", params_general$type_file), full.names = T)
   
@@ -1925,7 +1929,7 @@ summarize.lasinfo = function(path){
 
 # deduplicate data
 # strict scheme is applied, i.e. only exact duplicates (x, y, z) are removed, and not just x y duplicates (default in LAStools)
-lasduplicate = function(params_general, path_output = "",  update.path = TRUE, size_tile = 250){
+lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
   
   # define output directory
   if(path_output == ""){
@@ -1960,43 +1964,40 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE, s
     
   } else {
     
+    browser()
+    browser()
+    
     cat("lasduplicate open source called...\n")
     
-    lasduplicate_custom_function <- function(file, path_output, size_tile) {
-      
-      output_filename <- file.path(path_output, paste0(tools::file_path_sans_ext(basename(file)), ".laz"))
-      
-      pipeline <- lasR::reader(filter = lasR::drop_duplicates()) + lasR::write_las(output_filename)
-      
-      lasR::exec(
-        pipeline,
-        on = file,
-        ncores = params_general$n_cores,
-        with = list(chunk = size_tile), #TODO check how to use size_tile instead
-        progress = T
-      )
-    }
-    
-    cl <- makeCluster(params_general$n_cores)
-    registerDoParallel(cl)
+    output_filename <- file.path(path_output, "*.laz")
+
+    pipeline <- lasR::reader(filter = lasR::drop_duplicates()) + lasR::write_las(output_filename)
     
     files <- list.files(file.path.system(type_os = params_general$type_os, params_general$path_data), 
                         pattern = "*.laz$", full.names = TRUE)
     
-    # --- 4. Run parallel loop ---
-    foreach(
-      filename = files,
-      .combine = c
-      # .packages = c("lasR", "tools"),
-      # .export = c("lasduplicate_custom_function")
-    ) %dopar% {
-      lasduplicate_custom_function(
-        file = filename,
-        path_output = path_output,
-        size_tile = size_tile)
-    }
+    lasR::exec(
+      pipeline,
+      on = files,
+      ncores = params_general$n_cores,
+      with = list(chunk = size_tile),
+      progress = T
+    )
     
-    stopCluster(cl)
+    # # --- 4. Run parallel loop ---
+    # foreach(
+    #   filename = files,
+    #   .combine = c
+    #   # .packages = c("lasR", "tools"),
+    #   # .export = c("lasduplicate_custom_function")
+    # ) %dopar% {
+    #   lasduplicate_custom_function(
+    #     file = filename,
+    #     path_output = path_output,
+    #     size_tile = size_tile)
+    # }
+    
+    # stopCluster(cl)
     cat("lasduplicate open source done!\n")
   }
   
@@ -3086,6 +3087,9 @@ las2dem = function(params_general, path_output = "", name_raster = "", kill, ste
 
 make.dtm_nooverhangs = function(params_general, path_output = "", path_products = "", name_raster = "dtm_refined", kill = 200, step = 1, type_output = "tif", classes_ground = "2 8", threshold_drop = 10, arguments_additional = ""){
   
+  browser()
+  browser()
+  
   # start recording time
   time_start = Sys.time()
   
@@ -3123,8 +3127,11 @@ make.dtm_nooverhangs = function(params_general, path_output = "", path_products 
   }
   else
   {
+    
     cat("\nGenerate dtm_nooverhangs open source called...\n")
     tiles_pointcloud = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
+    
+    # TODO: replace with JR's
     
     ctg <- readLAScatalog(tiles_pointcloud)
     opt_chunk_size(ctg) <- size_tile
@@ -4239,6 +4246,9 @@ compute.sumstats_pc = function(params_general, path_output = "", resolution = 10
 
 process.datasubset = function(path_lastools, path_tmp, path_input, path_output, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = ""){
   
+  browser()
+  browser()
+  
   # remove temporary files (terra package)
   tmpFiles(old=TRUE, remove=TRUE)
   
@@ -4415,6 +4425,9 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
         cat("\nConverting point cloud to UTM \n")
       }
       
+      browser()
+      browser()
+      
       # OK for open source
       params_general_baseline = las2las.initial(params_general = params_general_baseline, metadata=metadata, size_tile=size_tile, force.utm = force.utm_auto,remove.vlr = F, remove.evlr = F, factor_rescale = factor_rescale, angle_lim = angle_lim, update.path = T, class_rm = class_rm, exclass_rm = exclass_rm, type_point = force.type_point)
       
@@ -4543,6 +4556,9 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           params_general_nocleanup = copy(params_general)
           params_general_nocleanup$cleanup = F
           
+          browser()
+          browser()
+          
           cat("\nGenerate initial classifications raster called...\n")
           
           if(!is.voidstring(params_general$path_lastools))
@@ -4555,6 +4571,10 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           }
           else
           {
+            
+            browser()
+            browser()
+            
             path_output_local = file.path(params_general$path_data, "lasgrid")
             if(!dir.exists(path_output_local)) dir.create(path_output_local, recursive = TRUE)
             
@@ -4572,16 +4592,15 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             future::plan(future::multisession, workers = params_general$n_cores)
             
             majority_class <- function(z) {
-              ux <- unique(z)
-              ux[which.max(tabulate(match(z, ux)))]
+              v = which.max(table(z))
+              v = as.numeric(names(v))
+              return(v)
             }
             
             catalog_apply(ctg, function(las_chunk) {
               r <- grid_metrics(las_chunk, ~majority_class(Classification), res = resolution)
-              rm(las_chunk)
-              gc()
-              return(r)
-            })
+              return(r)}
+            )
             
             future::plan(future::sequential)
             gc()
@@ -4618,18 +4637,20 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           if(params_general$cleanup == T) file.remove(files_classification)
           cat("\nGenerate classifications raster done!\n")
           
-          if(!is.voidstring(params_general$path_lastools))
-          {
-            # now we can safely delete user information
-            if(remove.vlr == T & remove.evlr == F){
-              params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_vlrs",type_output = "laz",update.path = T,params_general = params_general)
-            } else if(remove.vlr == F & remove.evlr == T){
-              params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_evlrs",type_output = "laz",update.path = T,params_general = params_general)
-            } else if(remove.vlr == T & remove.evlr == T){
-              params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_vlrs -remove_all_evlrs",type_output = "laz",update.path = T,params_general = params_general)
-            }
-          }
+          # if(!is.voidstring(params_general$path_lastools))
+          # {
+          #   # now we can safely delete user information
+          #   if(remove.vlr == T & remove.evlr == F){
+          #     params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_vlrs",type_output = "laz",update.path = T,params_general = params_general)
+          #   } else if(remove.vlr == F & remove.evlr == T){
+          #     params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_evlrs",type_output = "laz",update.path = T,params_general = params_general)
+          #   } else if(remove.vlr == T & remove.evlr == T){
+          #     params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_vlrs -remove_all_evlrs",type_output = "laz",update.path = T,params_general = params_general)
+          #   }
+          # }
           
+          # TODO: mettre le code de JR dans une fonction remove overhanging points
+          # TODO
           cat("\nGenerate dtm_nooverhangs called...\n")
           
           if(any(classifications_unique == 2)){
@@ -4637,6 +4658,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             # (presupposes that at least one ground pixel is visible, but that should be a given)
             status = tryCatch(
               {
+                # TODO : make.dtm normal !
                 make.dtm_nooverhangs(params_general = params_general, path_output = "", path_products = path_output, name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", threshold_drop = 10, classes_ground = "2 8",arguments_additional = "")
                 # las2dem(params_general = params_general, path_output = "", name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", option = "dtm")
                 #
@@ -5536,6 +5558,9 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 
 # TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
 process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
+  
+  browser()
+  browser()
   
   if(logfile != "" & dir.exists(dirname(logfile))){
     # new in v.50: create a log file for the most common issues

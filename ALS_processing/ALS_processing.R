@@ -87,10 +87,10 @@ source(file_helperfunctions)
 # standard processing script, using a fixed tile size
 name_job = "gca"  # overall job name, used for processing stats
 type_file = "laz" # type of the files to be processed, needs to be exact (las, laz, LAS, etc.)
-dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_verylight" # folder that contains data sets
-dir_processed =  "../03_processed_SebitoliveryLight"      # folder where processed data sets should be saved
+dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_test" # folder that contains data sets
+dir_processed =  "../03_processed_SebitoliTestNew"      # folder where processed data sets should be saved
 path_lastools = "" # folder to most recent lastools installation
-tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_SebitoliveryLight"   #!!!: folder where processing occurs: files will be overwritten and should never be a folder that is synchronized or has slow read/write operations, i.e., no Dropbox folders, no OneDrive, and not an external hard drive
+tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_SebitoliTest"   #!!!: folder where processing occurs: files will be overwritten and should never be a folder that is synchronized or has slow read/write operations, i.e., no Dropbox folders, no OneDrive, and not an external hard drive
 resolution = 1.0       # resolution of raster products (in m)
 n_cores = 15         # number of cores for processing, keep 1-2 cores available for system operations
 size_tile = 250        # retiling size
