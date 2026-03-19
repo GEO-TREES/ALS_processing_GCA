@@ -1266,28 +1266,46 @@ find.clusters_data = function(params_general, path_output = "", nbclusters_force
     
     return(list_params_general)
   } else {
+
+    cat("Open source clustering")
+        
+    ctg = readALScatalog(files_tocluster)
+    clusters = lidR::catalog_split_clusters(ctg)
     
-    cat("Defaulting to lidR. All files are considered as belonging to a single cluster\n")
-    # create output directory for temporary processing
-    path_tmp = file.path(params_general$path_data,"tmp")
-    if(!dir.exists(path_tmp)) dir.create(path_tmp)
+    nbclusters = length(clusters)
+    list_params_general = vector(mode = "list", length = nbclusters)
     
-    ctg = readLAScatalog(files_tocluster)
-    outlines_input = vect(ctg@data)
-    outlines_input = outlines_input[,c("filename")]
-    outlines_input$cluster = 1
-    buffer_outlines = params_general$buffer
-    outlines_input$buffer = buffer_outlines
-    writeVector(outlines_input, filename = file.path(params_general$path_data,"outlines_input.shp"), overwrite = TRUE)
+    if(nbclusters > 1){
+      # first we update params_general and copy buffers of the individual clusters into subfolders
+      for(i in 1:nbclusters){
+        # update path
+        params_general_cluster = data.table::copy(params_general)
+        params_general_cluster$path_data = file.path(params_general$path_data,paste0("part_",i))
+        
+        # create new directory specifically for this cluster
+        if(!dir.exists(params_general_cluster$path_data)) dir.create(params_general_cluster$path_data)
+        list_params_general[[i]] = params_general_cluster
+        
+        # get polygon buffers
+        outlines_buffer = aggregate(outlines_input_buffered[outlines_input_buffered$cluster == i])
+        bufferfiles_current = file.path(params_general$path_data, basename(outlines_input[is.related(outlines_input, outlines_buffer,"intersects") & outlines_input$cluster != i]$files))
+        
     
-    list_params_general = list(params_general)
-    return(list_params_general)
+    # # create output directory for temporary processing
+    # path_tmp = file.path(params_general$path_data,"tmp")
+    # if(!dir.exists(path_tmp)) dir.create(path_tmp)
+    # 
+    # ctg = readLAScatalog(files_tocluster)
+    # outlines_input = vect(ctg@data)
+    # outlines_input = outlines_input[,c("filename")]
+    # outlines_input$cluster = 1
+    # buffer_outlines = params_general$buffer
+    # outlines_input$buffer = buffer_outlines
+    # writeVector(outlines_input, filename = file.path(params_general$path_data,"outlines_input.shp"), overwrite = TRUE)
+    # 
+    # list_params_general = list(params_general)
+    # return(list_params_general)
   }
-  # } else {
-  #   cat("Not enough files to cluster\n")
-  #   list_params_general = list(params_general)
-  #   return(list_params_general)
-  # }
 }
 
 # find adjacent tiles from other folders in the same directory
@@ -3089,7 +3107,6 @@ make.dtm_nooverhangs = function(params_general, path_output = "", path_products 
   }
   else
   {
-    
     cat("\nGenerate dtm_nooverhangs open source called...\n")
     tiles_pointcloud = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
     
@@ -4601,7 +4618,26 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           # }
           
           # TODO: mettre le code de JR dans une fonction remove overhanging points
-          # TODO
+          
+          # Remove overhangings points
+          remove_hoverhangs_ground_points = function(res = 1)
+          {
+            gnd = filter_ground(las)
+            gnd = lidR:::subcircle(gnd, r = res*1.05, n = 16)
+            dtm_max = rasterize_canopy(gnd, res)
+            dtm_max[is.na(dtm_max)] = -Inf
+            las = merge_spatial(las, dtm_max, "tmp")
+            rm = las$Z < las$tmp - 10 & las$Classification == lidR::LASGROUND
+            las@data$tmp = NULL
+            las = las[!rm]
+          }
+          
+          ctg_path = params_general$path_data
+          ctg = lidR::readALScatalog(ctg_path)
+          
+          catalog_apply(ctg, remove_hoverhangs_ground_points())
+          
+          
           cat("\nGenerate dtm_nooverhangs called...\n")
           
           if(any(classifications_unique == 2)){
@@ -4609,7 +4645,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             # (presupposes that at least one ground pixel is visible, but that should be a given)
             status = tryCatch(
               {
-                # TODO : make.dtm normal !
                 make.dtm_nooverhangs(params_general = params_general, path_output = "", path_products = path_output, name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", threshold_drop = 10, classes_ground = "2 8",arguments_additional = "")
                 # las2dem(params_general = params_general, path_output = "", name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", option = "dtm")
                 #
