@@ -1111,8 +1111,6 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
 
 find.clusters_data = function(params_general, path_output = "", nbclusters_forced = NULL){
   
-  browser()
-  
   files_tocluster = list.files(params_general$path_data, pattern = paste0("\\.", params_general$type_file), full.names = T)
   
   # if(length(files_tocluster) > 1){
@@ -1269,45 +1267,44 @@ find.clusters_data = function(params_general, path_output = "", nbclusters_force
 
     cat("Open source clustering")
         
-    ctg = readALScatalog(files_tocluster)
-    clusters = lidR::catalog_split_clusters(ctg)
-    
-    nbclusters = length(clusters)
-    list_params_general = vector(mode = "list", length = nbclusters)
-    
-    if(nbclusters > 1){
-      # first we update params_general and copy buffers of the individual clusters into subfolders
-      for(i in 1:nbclusters){
-        # update path
-        params_general_cluster = data.table::copy(params_general)
-        params_general_cluster$path_data = file.path(params_general$path_data,paste0("part_",i))
-        
-        # create new directory specifically for this cluster
-        if(!dir.exists(params_general_cluster$path_data)) dir.create(params_general_cluster$path_data)
-        list_params_general[[i]] = params_general_cluster
-        
-        # get polygon buffers
-        outlines_buffer = aggregate(outlines_input_buffered[outlines_input_buffered$cluster == i])
-        bufferfiles_current = file.path(params_general$path_data, basename(outlines_input[is.related(outlines_input, outlines_buffer,"intersects") & outlines_input$cluster != i]$files))
-        
-    
+    # ctg = readALScatalog(files_tocluster)
+    # clusters = lidR::catalog_split_clusters(ctg)
+    # 
+    # nbclusters = length(clusters)
+    # list_params_general = vector(mode = "list", length = nbclusters)
+    # 
+    # if(nbclusters > 1){
+    #   # first we update params_general and copy buffers of the individual clusters into subfolders
+    #   for(i in 1:nbclusters){
+    #     # update path
+    #     params_general_cluster = data.table::copy(params_general)
+    #     params_general_cluster$path_data = file.path(params_general$path_data,paste0("part_",i))
+    #     
+    #     # create new directory specifically for this cluster
+    #     if(!dir.exists(params_general_cluster$path_data)) dir.create(params_general_cluster$path_data)
+    #     list_params_general[[i]] = params_general_cluster
+    #     
+    #     # get polygon buffers
+    #     outlines_buffer = aggregate(outlines_input_buffered[outlines_input_buffered$cluster == i])
+    #     bufferfiles_current = file.path(params_general$path_data, basename(outlines_input[is.related(outlines_input, outlines_buffer,"intersects") & outlines_input$cluster != i]$files))
+    #     
     # # create output directory for temporary processing
     # path_tmp = file.path(params_general$path_data,"tmp")
     # if(!dir.exists(path_tmp)) dir.create(path_tmp)
     # 
-    # ctg = readLAScatalog(files_tocluster)
-    # outlines_input = vect(ctg@data)
-    # outlines_input = outlines_input[,c("filename")]
-    # outlines_input$cluster = 1
-    # buffer_outlines = params_general$buffer
-    # outlines_input$buffer = buffer_outlines
-    # writeVector(outlines_input, filename = file.path(params_general$path_data,"outlines_input.shp"), overwrite = TRUE)
-    # 
-    # list_params_general = list(params_general)
-    # return(list_params_general)
+    ctg = readLAScatalog(files_tocluster)
+    outlines_input = vect(ctg@data)
+    outlines_input = outlines_input[,c("filename")]
+    outlines_input$cluster = 1
+    buffer_outlines = params_general$buffer
+    outlines_input$buffer = buffer_outlines
+    writeVector(outlines_input, filename = file.path(params_general$path_data,"outlines_input.shp"), overwrite = TRUE)
+
+    list_params_general = list(params_general)
+    return(list_params_general)
   }
 }
-
+  
 # find adjacent tiles from other folders in the same directory
 add.adjacent = function(outlines_cluster, path_origin, path_moveto, type_file, buffer){
   
@@ -1393,7 +1390,7 @@ first_last_points = function(x, y, step)
 
 # determine pulse density in a m2 grid
 get.pulsedensity = function(params_general, path_output = "", type_output = "tif", step, scanangle_abs_max = NULL, keep_first = T){
-
+  
   # define output directory
   if(path_output == ""){
     path_output = file.path(params_general$path_data,"pulsedensity")
@@ -1436,7 +1433,8 @@ get.pulsedensity = function(params_general, path_output = "", type_output = "tif
     
     future::plan(future::multisession, workers = params_general$n_cores)
     
-    r <- pixel_metrics(ctg, ~first_last_points(ReturnNumber, NumberOfReturns, step), res = step)
+    expr <- bquote(~first_last_points(ReturnNumber, NumberOfReturns, .(step)))
+    r <- pixel_metrics(ctg, expr, res = step)
     
     opt_output_files(ctg) <- file.path(path_output, "pulsedensity_scan_angle{ID}")
 
@@ -3552,8 +3550,8 @@ make.chm_pitfree = function(params_general, path_output = "", name_raster = "chm
   return(time_processing)
 }
 
-make.dsm_spikefree_adaptive = function(tile_pointcloud, params_general, dir_processing, fact_agg = 5, buffer_contours = 10, step = 1, kill = 200, multi_freeze = 3.1, slope_freeze = 1.75, offset_freeze = 2.1, path_pdagg = "", perturbation_max = 0.1, timeout_lspikefree_max = 600, step_thinning = 0.1){
-  
+make.dsm_spikefree_adaptive = function(tile_pointcloud, params_general, dir_processing, fact_agg = 5, buffer_contours = 10, step = 1, kill = 20, multi_freeze = 3.1,slope_freeze = 1.75, offset_freeze = 2.1, path_pdagg = "", perturbation_max = 0.1, timeout_lspikefree_max = 600, step_thinning = 0.1){
+
   cat("Processing", basename(tile_pointcloud),"\n")
   
   # now we write it out to the original directory
@@ -3730,7 +3728,6 @@ make.dsm_spikefree_adaptive = function(tile_pointcloud, params_general, dir_proc
         }
         
         # calculate spikefree
-        
         if(!file.exists(file.path.system(type_os = params_general$type_os, dir_tile, paste0(contours_pd_current$id,"_sort.tif"))))
         {
           return_system = system(
@@ -3980,7 +3977,6 @@ make.dsm_pitfree_adaptive = function(tile_pointcloud, params_general, dir_proces
   # create an empty raster with same resolution as pd, but NA values
   dsm_pitfree = pd
   values(dsm_pitfree) = NA
-  N
   diff_time_endtotal = 0
   # i = 1
   # i = i + 1
@@ -4135,49 +4131,68 @@ make.dsm_locallyadaptive = function(params_general = params_general, path_output
   }
   if(!dir.exists(path_output)) dir.create(path_output)
   
-  # create a subdirectory for the pulse density aggregation
-  path_pdagg = file.path(path_output, "pdagg")
-  if(!dir.exists(path_pdagg)) dir.create(path_pdagg)
+  cat("Open source lspikefree")
+
+  print(path_output)
+  print(params_dsmadaptive)
   
-  # process in parallel
-  nbcluster = params_general$n_cores
-  cl = makeCluster(nbcluster)
-  clusterExport(cl, varlist = list(algorithm_locallyadaptive,"file.path.system","cleanup.files","call.lastools","buffer_withsf","update.command_lastools")) # export function, v.42 added buffer_withsf
-  clusterEvalQ(
-    cl,
-    {
-      library(data.table) # for %like% operator etc.
-      library(terra)
-      library(parallel)
-      library(sf) # required for buffer_withsf
-      library(lidR) # required for readLASheader (v.42)
-    }
-  )
-  on.exit(stopCluster(cl))  # on.exit is also triggered when an error occurs
+  ctg <- readLAScatalog(params_general$path_data)
+  crs_scan <- crs(ctg)
   
-  # we use load balancing (parLapplyLB): improves processing time when there are asymmetries in tile size (e.g. edge vs. center)
-  # to avoid single large tiles blocking processing towards the end, we sort by tile size
-  tiles_pointcloud = data.table(file_tile = list.files(params_general$path_data, pattern = ".laz", full.names = T))
-  tiles_pointcloud[, size_file := file.size(file_tile)]
-  setorder(tiles_pointcloud, -size_file) # sort in descending order so that smallest files are dealt with last
-  tiles_pointcloud = tiles_pointcloud$file_tile
+  opt_filter(ctg) = "-keep_first"
+  opt_chunk_size(ctg)   <- size_tile
+  opt_chunk_buffer(ctg) <- size_buffer
+  opt_output_files(ctg) <- file.path(path_output, "chunk_{ID}_lspikefree")
+  opt_progress(ctg) <- T
   
-  if(option == "spikefree"){
-    
-    # debugging help
-    # files_dsm = as.character()
-    # for(j in 1:length(tiles_pointcloud)){
-    #   cat(j,"\n")
-    #   files_dsm_current = make.dsm_spikefree_adaptive(tile_pointcloud, params_general = params_general, dir_processing = path_output, fact_agg = 5, buffer_contours = 10, step = step, kill = kill, multi_freeze = params_dsmadaptive$multi, slope_freeze = params_dsmadaptive$slope, offset_freeze = params_dsmadaptive$offset, path_pdagg = path_pdagg, perturbation_max = 0.05)
-    #   files_dsm = c(files_dsm,files_dsm_current)
-    # }
-    
-    files_dsm = parLapplyLB(cl, tiles_pointcloud, algorithm_locallyadaptive, params_general = params_general, dir_processing = path_output, fact_agg = 5, buffer_contours = 10, step = step, kill = kill, multi_freeze = params_dsmadaptive$multi, slope_freeze = params_dsmadaptive$slope, offset_freeze = params_dsmadaptive$offset, path_pdagg = path_pdagg, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, step_thinning = 0.1)
-  }
+  future::plan(future::multisession, workers = params_general$n_cores)
+  r <- rasterize_canopy(ctg, res = step, lspikefree(height_buffer = 0.5))
+  future::plan(future::sequential)
+  gc()
   
-  # cleanup
-  tmpFiles(old = T, remove = T)
-  tmpFiles(orphan = T, remove = T)
+  # # create a subdirectory for the pulse density aggregation
+  # path_pdagg = file.path(path_output, "pdagg")
+  # if(!dir.exists(path_pdagg)) dir.create(path_pdagg)
+  # 
+  # # process in parallel
+  # nbcluster = params_general$n_cores
+  # cl = makeCluster(nbcluster)
+  # clusterExport(cl, varlist = list(algorithm_locallyadaptive,"file.path.system","cleanup.files","call.lastools","buffer_withsf","update.command_lastools")) # export function, v.42 added buffer_withsf
+  # clusterEvalQ(
+  #   cl,
+  #   {
+  #     library(data.table) # for %like% operator etc.
+  #     library(terra)
+  #     library(parallel)
+  #     library(sf) # required for buffer_withsf
+  #     library(lidR) # required for readLASheader (v.42)
+  #   }
+  # )
+  # on.exit(stopCluster(cl))  # on.exit is also triggered when an error occurs
+  # 
+  # # we use load balancing (parLapplyLB): improves processing time when there are asymmetries in tile size (e.g. edge vs. center)
+  # # to avoid single large tiles blocking processing towards the end, we sort by tile size
+  # tiles_pointcloud = data.table(file_tile = list.files(params_general$path_data, pattern = ".laz", full.names = T))
+  # tiles_pointcloud[, size_file := file.size(file_tile)]
+  # setorder(tiles_pointcloud, -size_file) # sort in descending order so that smallest files are dealt with last
+  # tiles_pointcloud = tiles_pointcloud$file_tile
+  # 
+  # if(option == "spikefree"){
+  #   
+  #   # debugging help
+  #   # files_dsm = as.character()
+  #   # for(j in 1:length(tiles_pointcloud)){
+  #   #   cat(j,"\n")
+  #   #   files_dsm_current = make.dsm_spikefree_adaptive(tile_pointcloud, params_general = params_general, dir_processing = path_output, fact_agg = 5, buffer_contours = 10, step = step, kill = kill, multi_freeze = params_dsmadaptive$multi, slope_freeze = params_dsmadaptive$slope, offset_freeze = params_dsmadaptive$offset, path_pdagg = path_pdagg, perturbation_max = 0.05)
+  #   #   files_dsm = c(files_dsm,files_dsm_current)
+  #   # }
+  #   
+  #   files_dsm = parLapplyLB(cl, tiles_pointcloud, algorithm_locallyadaptive, params_general = params_general, dir_processing = path_output, fact_agg = 5, buffer_contours = 10, step = step, kill = kill, multi_freeze = params_dsmadaptive$multi, slope_freeze = params_dsmadaptive$slope, offset_freeze = params_dsmadaptive$offset, path_pdagg = path_pdagg, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, step_thinning = 0.1)
+  # }
+  # 
+  # # cleanup
+  # tmpFiles(old = T, remove = T)
+  # tmpFiles(orphan = T, remove = T)
   
   # calculate elapsed time
   time_end = Sys.time()
@@ -4223,7 +4238,7 @@ compute.sumstats_pc = function(params_general, path_output = "", resolution = 10
 # applied to every data subset and processing the las files in it
 # TODO: should be split into smaller chunks
 
-process.datasubset = function(path_lastools, path_tmp, path_input, path_output, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = ""){
+process.datasubset = function(path_lastools, path_tmp, path_input, path_output, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = ""){
   
   # remove temporary files (terra package)
   tmpFiles(old=TRUE, remove=TRUE)
@@ -4619,23 +4634,25 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           
           # TODO: mettre le code de JR dans une fonction remove overhanging points
           
-          # Remove overhangings points
-          remove_hoverhangs_ground_points = function(res = 1)
-          {
-            gnd = filter_ground(las)
-            gnd = lidR:::subcircle(gnd, r = res*1.05, n = 16)
-            dtm_max = rasterize_canopy(gnd, res)
-            dtm_max[is.na(dtm_max)] = -Inf
-            las = merge_spatial(las, dtm_max, "tmp")
-            rm = las$Z < las$tmp - 10 & las$Classification == lidR::LASGROUND
-            las@data$tmp = NULL
-            las = las[!rm]
-          }
+          cat("Open source REMOVE OVERHANGING POINTS")
           
-          ctg_path = params_general$path_data
-          ctg = lidR::readALScatalog(ctg_path)
-          
-          catalog_apply(ctg, remove_hoverhangs_ground_points())
+          # # Remove overhangings points
+          # remove_hoverhangs_ground_points = function(res = 1)
+          # {
+          #   gnd = filter_ground(las)
+          #   gnd = lidR:::subcircle(gnd, r = res*1.05, n = 16)
+          #   dtm_max = rasterize_canopy(gnd, res)
+          #   dtm_max[is.na(dtm_max)] = -Inf
+          #   las = merge_spatial(las, dtm_max, "tmp")
+          #   rm = las$Z < las$tmp - 10 & las$Classification == lidR::LASGROUND
+          #   las@data$tmp = NULL
+          #   las = las[!rm]
+          # }
+          # 
+          # ctg_path = params_general$path_data
+          # ctg = lidR::readALScatalog(ctg_path)
+          # 
+          # catalog_apply(ctg, remove_hoverhangs_ground_points())
           
           
           cat("\nGenerate dtm_nooverhangs called...\n")
@@ -5116,9 +5133,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           # get percentage of cloudy areas
           perc_cloud = 100 * max(0, as.numeric(global(dtm,"notNA") - global(mask_cloud,"notNA")))/as.numeric(global(dtm,"notNA"))
           
-          browser()
-          browser()
-          
           if("tin" %in% types_dsm){
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
             cat("\nCreating TIN-based DSM \n")
@@ -5161,6 +5175,62 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             chm_spikefree = clamp(chm_spikefree, lower = 0, values = T)
             writeRaster(chm_spikefree, filename = file.path(path_output,paste0("chm_spikefree",addendum_name,".tif")), overwrite = T)
           }
+          
+          if("lspikefree" %in% types_dsm & nrow(params_dsmadaptive) > 0){
+            
+            cat("LSPIKEFREE ! nrow(params_dsmadaptive) ???")
+            for(id_param in 1:nrow(params_dsmadaptive)){
+              params_dsmadaptive_current = params_dsmadaptive[id_param]
+              name_dsm_lspikefree = as.character(NA)
+              if(nrow(params_dsmadaptive) == 1){
+                name_dsm_lspikefree = "dsm_lspikefree"
+              } else {
+                name_dsm_lspikefree = paste0("dsm_lspikefree_multi",
+                                             params_dsmadaptive_current$multi,
+                                             "_slope",
+                                             params_dsmadaptive_current$slope,
+                                             "_offset",
+                                             params_dsmadaptive_current$offset)
+                }
+                cat("Creating",name_dsm_lspikefree,"\n")
+                
+                
+                time_dsm_lspikefree = make.dsm_locallyadaptive(params_general = params_general, 
+                                                               path_output = file.path(params_general$path_data,name_dsm_lspikefree), 
+                                                               name_raster = name_dsm_lspikefree, 
+                                                               kill = 200, 
+                                                               step = resolution, 
+                                                               option = "spikefree", 
+                                                               params_dsmadaptive = params_dsmadaptive_current, 
+                                                               normalize = F)
+                
+                name_time = paste0("time_", name_dsm_lspikefree)
+                summary_full[, (name_time) := time_dsm_lspikefree]
+                
+                files_dsm_lspikefree = list.files.nonzero(path = file.path(params_general$path_data, name_dsm_lspikefree), 
+                                                          pattern = ".tif", 
+                                                          full.names = TRUE)
+              
+                dsm_lspikefree = vrt(files_dsm_lspikefree); terra::crs(dsm_lspikefree) = crs_scan
+                if(ext(dsm_lspikefree) != ext(dtm)){
+                  cat("Warning! DSM extent is off and will be adjusted!\n")
+                  dsm_lspikefree = crop(extend(dsm_lspikefree,dtm),dtm)
+                }
+                
+                writeRaster(dsm_lspikefree, 
+                            filename = file.path(path_output, paste0(name_dsm_lspikefree, addendum_name,".tif")), 
+                            overwrite = T)
+                
+                if (params_general$cleanup == T) file.remove(files_dsm_lspikefree)
+                
+                chm_lspikefree = dsm_lspikefree - dtm; terra::crs(chm_lspikefree) = crs_scan
+                chm_lspikefree = clamp(chm_lspikefree, lower = 0, values = T)
+                writeRaster(chm_lspikefree, 
+                            filename = file.path(path_output,paste0(gsub("dsm","chm",name_dsm_lspikefree),"", addendum_name,".tif")), 
+                            overwrite = T)
+                
+              }
+            }
           
           if("lspikefree" %in% types_dsm & nrow(params_dsmadaptive) > 0 & !is.voidstring(params_general$path_lastools)){
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -5613,7 +5683,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 # - name_job: name of current job (in case data set is processed several times, use v1, v2, or similar)
 
 # TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
-process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
+process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
   
   if(logfile != "" & dir.exists(dirname(logfile))){
     # new in v.50: create a log file for the most common issues
