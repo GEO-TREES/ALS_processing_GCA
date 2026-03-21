@@ -1438,7 +1438,7 @@ get.pulsedensity = function(params_general, path_output = "", type_output = "tif
     
     opt_output_files(ctg) <- file.path(path_output, "pulsedensity_scan_angle{ID}")
 
-    expr = bquote(~ScanAngle < .(scanangle_abs_max))
+    expr = bquote(~ScanAngleRank < .(scanangle_abs_max))
     r <- pixel_metrics(ctg, ~length(Z), res = step, filter=expr)
     
     future::plan(future::sequential)
@@ -1535,7 +1535,7 @@ get.scanangle_abs = function(params_general, path_output = "", type_output = "ti
     opt_output_files(ctg) <- file.path(path_output, "scanangle_abs_{ID}")
     
     future::plan(future::multisession, workers = params_general$n_cores)
-    r <- pixel_metrics(ctg, ~max(abs(ScanAngle)), res = step)
+    r <- pixel_metrics(ctg, ~max(abs(ScanAngleRank)), res = step)
     future::plan(future::sequential)
     
   }
