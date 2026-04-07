@@ -495,6 +495,33 @@ check.n_cores = function(n_cores, type_os, logfile){
 #   return(use.blast2dem)
 # }
 
+get.scan_angle_field = function(path_data, type_file = "laz") {
+  
+  # Read one file to inspect available fields
+  files = list.files(path_data, pattern = paste0("\\.", type_file, "$"), 
+                     full.names = TRUE)
+  
+  if (length(files) == 0) {
+    warning("No files found, defaulting to 'ScanAngle'")
+    return("ScanAngle")
+  }
+  
+  # Read minimal data from first file
+  las = readLAS(files[1], select = "a")  # 'a' = scan angle field
+  available_fields = names(las@data)
+  
+  if ("ScanAngle" %in% available_fields) {
+    cat("Scan angle field detected: ScanAngle\n")
+    return("ScanAngle")
+  } else if ("ScanAngleRank" %in% available_fields) {
+    cat("Scan angle field detected: ScanAngleRank\n")
+    return("ScanAngleRank")
+  } else {
+    warning("No scan angle field found, defaulting to 'ScanAngle'")
+    return("ScanAngle")
+  }
+}
+
 update.command_lastools = function(command_lastools, type_architecture){
   command_lastools = ifelse(type_architecture == "64" & !command_lastools %like% "64",paste0(command_lastools,"64"),command_lastools)
   return(command_lastools)
@@ -747,13 +774,13 @@ get.extent_lidar = function(path_input, type_file, attributes_vect = NULL, attri
 # lidR equivalent of lasindex
 # laxindex does not seem to explicitly exist anymore in lidR, we insert it manually
 make.catalog_laxindex = function(ctg){
+  
   stopifnot(is(ctg, "LAScatalog"))
   
   opt_chunk_size(ctg)   = 0
   opt_chunk_buffer(ctg) = 0
   opt_wall_to_wall(ctg) = FALSE
-  opt_output_files(ctg) = ""
-  
+
   create.file_lax = function(cluster) {
     rlas::writelax(cluster@files)
     return(0)
@@ -920,7 +947,7 @@ call.lastools = function(command_lastools, arguments_lastools, params_general, t
   
   if(type_output %in% c("las","laz")){
     cat("Reindexing\n")
-    lasindex(params_general)
+    # lasindex(params_general)
   }
   
   if(update.path == TRUE){
@@ -960,15 +987,14 @@ lasindex = function(params_general){
       cat("System command could not be completed\n")
     }
   } else {
-    # lidR version, based on laxindex
-    # read in files
+
     files.input = list.files(path = params_general$path_data,pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     ctg = readLAScatalog(files.input)
     
     opt_filter(ctg) = "-drop_withheld"
-    opt_output_files(ctg) = params_general$path_data # same as input
-    opt_progress(ctg) = FALSE # deactivate rendering of progress
-    opt_laz_compression(ctg) = TRUE
+    opt_output_files(ctg) = params_general$path_data
+    opt_progress(ctg) = T
+    opt_laz_compression(ctg) = T
     make.catalog_laxindex(ctg)
   }
 }
@@ -1032,7 +1058,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
     )
   )
     
-    lasindex(params_general)
+    # lasindex(params_general)
   } else {
 
     cat("las2las.initial OpenSource version!\n")
@@ -1389,7 +1415,7 @@ first_last_points = function(x, y, step)
 }
 
 # determine pulse density in a m2 grid
-get.pulsedensity = function(params_general, path_output = "", type_output = "tif", step, scanangle_abs_max = NULL, keep_first = T){
+get.pulsedensity = function(params_general, path_output = "", type_output = "tif", step, scanangle_abs_max = NULL, keep_first = T, scan_angle_field="ScanAngle"){
   
   # define output directory
   if(path_output == ""){
@@ -1425,6 +1451,7 @@ get.pulsedensity = function(params_general, path_output = "", type_output = "tif
     } 
   } else {
     
+    
     cat("Pulse density open source called...\n")
     files.input = list.files(path = params_general$path_data, pattern = "\\.laz", full.names = TRUE)
     
@@ -1438,8 +1465,15 @@ get.pulsedensity = function(params_general, path_output = "", type_output = "tif
     
     opt_output_files(ctg) <- file.path(path_output, "pulsedensity_scan_angle{ID}")
 
-    expr = bquote(~ScanAngleRank < .(scanangle_abs_max))
-    r <- pixel_metrics(ctg, ~length(Z), res = step, filter=expr)
+    filter_expr <- as.formula(
+      substitute(~field < thresh,
+                 list(field = as.name(scan_angle_field), thresh = scanangle_abs_max)
+      )
+    )
+    r <- pixel_metrics(ctg, ~length(Z), res = step, filter = filter_expr)
+    
+    # expr = bquote(.(as.name(scan_angle_field)) < .(scanangle_abs_max))
+    # r <- pixel_metrics(ctg, ~length(Z), res = step, filter=expr)
     
     future::plan(future::sequential)
     
@@ -1493,7 +1527,7 @@ get.grounddensity = function(params_general, path_output = "", type_output = "ti
   }
 }
 
-get.scanangle_abs = function(params_general, path_output = "", type_output = "tif", step){
+get.scanangle_abs = function(params_general, path_output = "", type_output = "tif", step, scan_angle_field = "ScanAngle"){
   
   # define output directory
   if(path_output == ""){
@@ -1535,7 +1569,7 @@ get.scanangle_abs = function(params_general, path_output = "", type_output = "ti
     opt_output_files(ctg) <- file.path(path_output, "scanangle_abs_{ID}")
     
     future::plan(future::multisession, workers = params_general$n_cores)
-    r <- pixel_metrics(ctg, ~max(abs(ScanAngleRank)), res = step)
+    r <- pixel_metrics(ctg, bquote(~max(abs(.(as.name(scan_angle_field))))), res = step)
     future::plan(future::sequential)
     
   }
@@ -1674,7 +1708,7 @@ lassplit = function(params_general, path_output = "", update.path = TRUE){
     params_general$path_data = path_output
     params_general$type_file = "laz"
     params_general$bbtype = "tile"
-    lasindex(params_general)
+    # lasindex(params_general)
     cat("Amended file path returned\n")
     return(params_general)
   }
@@ -1718,7 +1752,7 @@ lastile = function(params_general, path_output = "", size_tile = 500, update.pat
       params_general_refine$path_data = path_output
       params_general_refine$type_file = "laz"
       params_general_refine$bbtype = "tile"
-      lasindex(params_general_refine)
+      # lasindex(params_general_refine)
       return_system = system(
         paste(
           file.path.system(type_os = params_general$type_os, params_general$path_lastools, update.command_lastools("lastile", type_architecture = params_general$type_architecture)),
@@ -1767,7 +1801,7 @@ lastile = function(params_general, path_output = "", size_tile = 500, update.pat
     params_general$path_data = path_output
     params_general$type_file = "laz"
     params_general$bbtype = "tile"
-    lasindex(params_general)
+    # lasindex(params_general)
     cat("Amended file path returned\n")
     return(params_general)
   }
@@ -1947,7 +1981,7 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
       cat("System command could not be completed\n")
     } 
     
-    lasindex(params_general)
+    # lasindex(params_general)
     
   } else {
     
@@ -2054,7 +2088,7 @@ lasnoise = function(params_general, path_output = "", step = 3, isolated = 3, up
     cat("Amending file path and reindexing\n")
     params_general$path_data = path_output
     params_general$type_file = "laz"
-    lasindex(params_general)
+    # lasindex(params_general)
     cat("Amended file path returned\n")
     return(params_general)
   }
@@ -2122,7 +2156,7 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
     cat("Amending file path and reindexing\n")
     params_general$path_data = path_output
     params_general$type_file = "laz"
-    lasindex(params_general)
+    # lasindex(params_general)
     cat("Amended file path returned\n")
     return(params_general)
   }
@@ -2777,7 +2811,7 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
       )
     )
     
-    lasindex(params_general)
+    # lasindex(params_general)
   } else {
     cat("filter.height open source called...\n")
     
@@ -2848,7 +2882,7 @@ downsample = function(params_general, path_output = "", pd_downsampling = 2, upd
     cat("Amending file path and reindexing\n")
     params_general$path_data = path_output
     params_general$type_file = "laz"
-    lasindex(params_general)
+    # lasindex(params_general)
     cat("Amended file path returned\n")
     return(params_general)
   }
@@ -2931,7 +2965,7 @@ normalize.pointcloud = function(params_general, path_output = "", path_dtm = "",
       }
     }
     
-    lasindex(params_general)
+    # lasindex(params_general)
   }
   
   if(params_general$cleanup == T) cleanup.files(params_general$path_data)
@@ -3406,7 +3440,7 @@ make.chm_pitfree = function(params_general, path_output = "", name_raster = "chm
     
     params_general$path_data = tmp_processing
     
-    lasindex(params_general)
+    # lasindex(params_general)
     
     # create a simple chm, based on highest returns
     return_system = system(
@@ -4498,7 +4532,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             cat("\nFound",length(files_adjacent),"adjacent files\n")
             
             cat("\nLasindex\n")
-            lasindex(params_general)
+            # lasindex(params_general)
             
             if(remove.buffer == T){
               cat("Remove any existing buffers\n")
@@ -4722,7 +4756,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             # reasoning: the most critical part is not to accidentally remove ground points. Keeping a few birds or cloud points seems less of an issue in comparison, as they will be far more localized and easy to spot
             # should have a small impact on scans with little pulse density variation or low density scans, where the minimum of 5 points is usually significant
             # TODO: this function should actually be made a locally adaptive one
-            
+
             # Denoise to be implemented in open source
             if(denoise == T){
               step_processing = paste0("denoise")
@@ -4760,7 +4794,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                                 pattern = "*.laz$", full.names = TRUE)
             
             step_noise = 4
-            density_points_cutoff = 0.5 * quantile(summary_bytile$density_points,0.1)
+            density_points_cutoff = 0.5 * quantile(summary_bytile$density_points, 0.1)
             isolated = as.integer(0.007 * density_points_cutoff * (3 * step_noise)^2)
             if(isolated < 5) isolated = 5
             
@@ -4781,7 +4815,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           cat("Amending file path and reindexing\n")
           params_general$path_data = path_output_denoising
           params_general$type_file = "laz"
-          lasindex(params_general)
+          # lasindex(params_general)
           cat("Amended file path returned\n")
           
           if(reclassify == T){
@@ -4827,8 +4861,13 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           cat("\nGet pulse density and scan angle\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
+          scan_angle_field = get.scan_angle_field(
+            path_data  = params_general$path_data, 
+            type_file  = params_general$type_file
+          )
+          
           step_processing = paste0("get pulsedensity rasters")
-          get.pulsedensity(params_general = params_general, path_output = "", step = resolution)
+          get.pulsedensity(params_general = params_general, path_output = "", step = resolution, scan_angle_field = scan_angle_field)
 
           files_pulsedensity_firstlast = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"),
                                                             pattern = "pulsedensity_[0-9]+\\.tif$", full.names = TRUE)
@@ -4890,7 +4929,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           angle99th = NULL
           status = tryCatch(
             {
-              get.scanangle_abs(params_general = params_general,path_output = "", step = resolution)
+              get.scanangle_abs(params_general = params_general,path_output = "", step = resolution, scan_angle_field = scan_angle_field)
 
               files_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"scanangle_abs"), pattern = "\\.tif", full.names = TRUE)
 
@@ -5211,6 +5250,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                                                           pattern = ".tif", 
                                                           full.names = TRUE)
               
+                
                 dsm_lspikefree = vrt(files_dsm_lspikefree); terra::crs(dsm_lspikefree) = crs_scan
                 if(ext(dsm_lspikefree) != ext(dtm)){
                   cat("Warning! DSM extent is off and will be adjusted!\n")
@@ -5224,7 +5264,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                 if (params_general$cleanup == T) file.remove(files_dsm_lspikefree)
                 
                 chm_lspikefree = dsm_lspikefree - dtm; terra::crs(chm_lspikefree) = crs_scan
-                chm_lspikefree = clamp(chm_lspikefree, lower = 0, values = T)
+                chm_lspikefree = terra::clamp(chm_lspikefree, lower = 0, values = T)
                 writeRaster(chm_lspikefree, 
                             filename = file.path(path_output,paste0(gsub("dsm","chm",name_dsm_lspikefree),"", addendum_name,".tif")), 
                             overwrite = T)
@@ -5285,6 +5325,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           cat("\nCreate normalized point cloud \n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           step_processing = paste0("normalize point cloud")
+          cat("NOT DONE IN OPENSOURCE VERSION")
           # NOTE: we do not update params_general, the normalized point clouds are going to be stored in a subfolder, indicated by params_general_normalized$path_data
           params_general$cleanup = F
           params_general_normalized = NULL
@@ -5440,17 +5481,16 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           time_end_current = Sys.time()
           
           cat("Skipping Combined masks")
-          # #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          # cat("\nProduce combined mask \n")
-          # #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          # 
-          # step_processing = paste0("combine masks")
-          # files_masks = list.files(path_output, pattern = "mask_")
-          # files_masks = files_masks[files_masks %like% "mask_pd02" | files_masks %like% "mask_cloud" | files_masks %like% "mask_noground"]
-          # masks_combined = rast(file.path(path_output,files_masks))
-          # mask_combined = sum(masks_combined)
-          # writeRaster(mask_combined, filename = file.path(path_output,paste0("mask_combined",addendum_name,".tif")), overwrite = T)
-          # 
+          #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          cat("\nProduce combined mask \n")
+          #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          step_processing = paste0("combine masks")
+          files_masks = list.files(path_output, pattern = "mask_")
+          files_masks = files_masks[files_masks %like% "mask_pd02" | files_masks %like% "mask_cloud" | files_masks %like% "mask_noground"]
+          masks_combined = terra::rast(file.path(path_output,files_masks))
+          mask_combined = sum(masks_combined)
+          terra::writeRaster(mask_combined, filename = file.path(path_output,paste0("mask_combined",addendum_name,".tif")), overwrite = T)
+
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nProduce synthesis \n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
