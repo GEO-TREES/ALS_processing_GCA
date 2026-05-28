@@ -77,10 +77,6 @@ setwd(path)
 file_helperfunctions = "./ALS_processing_helperfunctions.R"
 source(file_helperfunctions)
 
-# Redirect normal output
-# log_file = "./log.txt"
-# sink(log_file)
-
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 ##### 2. Processing parameters (fixed tile size) #####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
