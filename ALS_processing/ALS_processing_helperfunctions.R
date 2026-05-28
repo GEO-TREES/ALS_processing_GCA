@@ -1030,8 +1030,6 @@ lasinfo.repair =  function(params_general){
 # can also be used to force to UTM
 las2las.initial = function(params_general, metadata, size_tile, path_output = "", force.utm = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, angle_lim = NULL, update.path = TRUE, class_rm = "", exclass_rm = "", type_point = NULL){
 
-  # browser()
-  
   # define output directory
   if(path_output == ""){
     path_output = file.path(params_general$path_data,"las2las")
@@ -4297,8 +4295,6 @@ compute.sumstats_pc = function(params_general, path_output = "", resolution = 10
 
 process.datasubset = function(path_lastools, path_tmp, path_input, path_output, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step){
   
-  browser()
-  
   # remove temporary files (terra package)
   tmpFiles(old=TRUE, remove=TRUE)
   
@@ -4465,8 +4461,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
         }
       }
     }
-    
-    # browser()
     
     # if (checkpoint_step <= 2){}
     
@@ -4846,8 +4840,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           params_general$type_file = "laz"
           # lasindex(params_general)
           cat("Amended file path returned\n")
-          
-          browser()
           
           if(reclassify == T){
             
@@ -5273,8 +5265,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                                                                option = "spikefree", 
                                                                params_dsmadaptive = params_dsmadaptive_current, 
                                                                normalize = F)
-                # browser()
-                
+
                 name_time = paste0("time_", name_dsm_lspikefree)
                 summary_full[, (name_time) := time_dsm_lspikefree]
                 
@@ -5773,8 +5764,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 # TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
 process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
   
-  browser()
-  
   if(logfile != "" & dir.exists(dirname(logfile))){
     # new in v.50: create a log file for the most common issues
     logfile_dt = data.table(path = character(), issue = character())
@@ -5872,9 +5861,6 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpd
         
         files_output_current = list.files(dir_current$path_output, full.names = T)
         # if(length(files_output_current) > 0) file.remove(files_output_current)
-        
-        # browser()
-        # browser()
         
         checkpoint_step = 0
         
