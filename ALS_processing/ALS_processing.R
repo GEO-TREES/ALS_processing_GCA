@@ -85,18 +85,18 @@ source(file_helperfunctions)
 ##### 2. Processing parameters (fixed tile size) #####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 # standard processing script, using a fixed tile size
-name_job = "gca"  # overall job name, used for processing stats
-type_file = "laz" # type of the files to be processed, needs to be exact (las, laz, LAS, etc.)
-dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_test" # folder that contains data sets
-dir_processed =  "../03_processed_SebitoliTestNew"      # folder where processed data sets should be saved
-path_lastools = "" # folder to most recent lastools installation
-tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_SebitoliTest"   #!!!: folder where processing occurs: files will be overwritten and should never be a folder that is synchronized or has slow read/write operations, i.e., no Dropbox folders, no OneDrive, and not an external hard drive
-resolution = 1.0       # resolution of raster products (in m)
-n_cores = 15         # number of cores for processing, keep 1-2 cores available for system operations
-size_tile = 250        # retiling size
-size_buffer = 50       # 25m - 50m, 50 m should be sufficient for any type of acquisition (25m may be too small for  ground point classification in sparse scans)
+name_job = "gca"
+type_file = "laz"
+dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_all/"
+dir_processed =  "../03_processed_Sebitoli"
+tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_Sebitoli" 
+path_lastools = ""
+resolution = 1.0
+n_cores = 10
+size_tile = 100
+size_buffer = 25
 force.utm = "from_metadata"          # force reprojection of system into UTM (and meter) coordinates; necessary for all files that are registered in feet, otherwise output will be in feet
-force.recompute = F    # force reprocessing; usually set to FALSE, useful when computation has been interrupted for external reasons (power cutofff) and needs to be restarted, because only unprocessed data subsets will be reprocessed
+force.recompute = F  # Set to TRUE to ignore any checkpoint and reprocess everything from scratch    # force reprocessing; usually set to FALSE, useful when computation has been interrupted for external reasons (power cutofff) and needs to be restarted, because only unprocessed data subsets will be reprocessed
 remove.vlr = F    # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all vlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating vlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
 remove.evlr = F   # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all evlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating evlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
 use.blast2dem = T # should be activated by default as it improves (or makes possible) TIN construction in very dense point clouds, but: not tested on Linux so far
@@ -120,11 +120,11 @@ results = process.dataset(
   , use.blast2dem = use.blast2dem
   , patterns_skip = c() # skipping the processing of some folders
   , cleanup = T
+  , retile = T
 )
 
 # # other parameters
 # metadata = NULL
-# retile = T
 # cleanup = T
 # nbclusters_forced = NULL
 # remove.buffer = F
