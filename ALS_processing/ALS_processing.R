@@ -1,3 +1,5 @@
+# INTRO COPIED FROM GCA code, has to be changed
+#
 # Processing pipeline for Airborne Laser Scanning (ALS) 
 #
 # Produces standardized sets of digital terrain models (DTMs), digital surface
@@ -66,14 +68,14 @@
 # use up-to-date versions of R version, R packages and LAStools! 
 # update.packages()
 
-# set working directory
+# # set working directory
 this_file = grep("^--file=", commandArgs(), value = TRUE)
 this_file = gsub("^--file=", "", this_file)
 if(length(this_file) == 0) this_file = rstudioapi::getSourceEditorContext()$path
 path = dirname(this_file)
 setwd(path)
 
-# load helper functions
+# load helper function
 file_helperfunctions = "./ALS_processing_helperfunctions.R"
 source(file_helperfunctions)
 
@@ -83,14 +85,17 @@ source(file_helperfunctions)
 # standard processing script, using a fixed tile size
 name_job = "gca"
 type_file = "laz"
-dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_all/"
-dir_processed =  "../03_processed_Sebitoli"
-tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_Sebitoli" 
+dir_dataset = ""
+dir_processed =  ""
+tmpdir_processing = "" 
 path_lastools = ""
 resolution = 1.0
 n_cores = 10
 size_tile = 100
 size_buffer = 25
+
+# Not all parameters are useful with regards to the new open source version, has to be checked
+
 force.utm = "from_metadata"          # force reprojection of system into UTM (and meter) coordinates; necessary for all files that are registered in feet, otherwise output will be in feet
 force.recompute = F  # Set to TRUE to ignore any checkpoint and reprocess everything from scratch    # force reprocessing; usually set to FALSE, useful when computation has been interrupted for external reasons (power cutofff) and needs to be restarted, because only unprocessed data subsets will be reprocessed
 remove.vlr = F    # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all vlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating vlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
