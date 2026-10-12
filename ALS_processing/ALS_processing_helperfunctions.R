@@ -5,7 +5,7 @@
 # this version is adapted from the 1.0.3 version of the GCA pipeline (with lastools functions)
 # the lastools part are kept but should not be executed if the user set path_lastools = ""
 
-library(Hmisc)
+# library(Hmisc)
 library(data.table)
 library(terra)
 library(sf) # for buffering polygons, sf st_buffer is more permissive/less error prone than terra's buffer function
@@ -1460,7 +1460,7 @@ get.pulsedensity = function(params_general, path_output = "", type_output = "tif
     ctg <- readLAScatalog(files.input)
     opt_output_files(ctg) <- file.path(path_output, "pulsedensity_{ID}")
     
-    future::plan(future::multisession, workers = params_general$n_cores)
+    future::plan(future.callr::callr, workers = params_general$n_cores)
     
     expr <- bquote(~first_last_points(ReturnNumber, NumberOfReturns, .(step)))
     r <- pixel_metrics(ctg, expr, res = step)
@@ -1570,7 +1570,7 @@ get.scanangle_abs = function(params_general, path_output = "", type_output = "ti
     ctg <- readLAScatalog(path_data)
     opt_output_files(ctg) <- file.path(path_output, "scanangle_abs_{ID}")
     
-    future::plan(future::multisession, workers = params_general$n_cores)
+    future::plan(future.callr::callr, workers = params_general$n_cores)
     r <- pixel_metrics(ctg, bquote(~max(abs(.(as.name(scan_angle_field))))), res = step)
     future::plan(future::sequential)
     
@@ -1789,7 +1789,7 @@ lastile = function(params_general, path_output = "", size_tile = 500, update.pat
     # process data
     # opt_filter(ctg) = paste0("-drop_withheld", paste0(" -drop_class 7 18 ", paste(class_rm, collapse = " ")), ifelse(length(exclass_rm) > 0, paste0(" -drop_extended_class ", paste(exclass_rm, collapse = " ")),"")) # new in v.47: remove extra noise classes or otherwise from scan (necessary for IGN France, for example, where artefacts/noise is usually marked with 65, or even 28) # removed due to inconsistency; this is the wrong location for this step
     opt_output_files(ctg) = paste0(path_output, "/{XLEFT}_{YBOTTOM}")
-    opt_progress(ctg) = FALSE # deactivate rendering of progress
+    opt_progress(ctg) = T # deactivate rendering of progress
     opt_laz_compression(ctg) = TRUE
     opt_chunk_size(ctg) = size_tile
     opt_chunk_buffer(ctg) = params_general$buffer #TODO to be checked
@@ -1865,10 +1865,10 @@ lasinfo = function(params_general, path_output = ""){
     
     opt_chunk_size(ctg) <- 0  # file-by-file
     opt_chunk_buffer(ctg) <- 0
-    opt_progress(ctg) <- TRUE
+    opt_progress(ctg) <- T
     opt_independent_files(ctg) <- TRUE
     
-    future::plan(future::multisession, workers = params_general$n_cores)
+    future::plan(future.callr::callr, workers = params_general$n_cores)
     
     res_list <- catalog_apply(ctg, ctg_summarize_chunk)
     summary_bytile <- rbindlist(res_list, use.names = TRUE, fill = TRUE)
@@ -1883,6 +1883,18 @@ lasinfo = function(params_general, path_output = ""){
   date_origin = as.Date("1980-01-06")
   gps_max = as.Date(Sys.time())
   gps_max = as.numeric(difftime(gps_max, date_origin, units = "s")) - GPS_OFFSET
+  
+  wtd.var <- function(x, weights = NULL, na.rm = TRUE) {
+    if (is.null(weights)) return(var(x, na.rm = na.rm))
+    if (na.rm) {
+      keep <- !is.na(x) & !is.na(weights)
+      x <- x[keep]
+      weights <- weights[keep]
+    }
+    sw <- sum(weights)
+    xbar <- sum(weights * x) / sw
+    sum(weights * (x - xbar)^2) / (sw - 1)
+  }
   
   # whole-acquisition summary statistics
   summary_full = NULL
@@ -2079,7 +2091,7 @@ lasnoise = function(params_general, path_output = "", step = 3, isolated = 3, up
     opt_filter(ctg) = "-drop_withheld"
     opt_chunk_buffer(ctg) = params_general$buffer
     opt_output_files(ctg) = paste0(path_output,"/{*}")
-    opt_progress(ctg) = FALSE
+    opt_progress(ctg) = T
     opt_laz_compression(ctg) = TRUE
     classify_noise(ctg, ivf(res = step, n = isolated))
   }
@@ -2116,9 +2128,9 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
         "-i",
         file.path.system(type_os = params_general$type_os, params_general$path_data,paste0("*.",params_general$type_file)),
         "-cores", params_general$n_cores,
-        ifelse(!is.null(step),paste0("-step ",round(step, 3)),""),
-        ifelse(!is.null(sub),paste0("-sub ",round(sub, 3)),""),
-        ifelse(!is.null(step),paste0("-bulge ",round(step/divisor_bulge, 3)),""),
+        ifelse(!is.null(step),paste0("-step ", round(step, 3)),""),
+        ifelse(!is.null(sub),paste0("-sub ", round(sub, 3)),""),
+        ifelse(!is.null(step),paste0("-bulge ", round(step/divisor_bulge, 3)),""),
         arguments_additional,
         "-odir", file.path.system(type_os = params_general$type_os, path_output),
         "-olaz",
@@ -2829,7 +2841,7 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
     exec(filter_height_pipeline,
          on = params_general$path_data,
          ncores = params_general$n_cores,
-         progress = TRUE)
+         progress = T)
     
     cat("filter.height open source done!\n")
   }
@@ -3150,7 +3162,7 @@ make.dtm_nooverhangs = function(params_general, path_output = "", path_products 
     opt_progress(ctg) <- T
     opt_output_files(ctg) <- file.path(params_general$path_data, paste0(name_raster, "/{ID}_dtm_nooverhangs"))
     
-    future::plan(future::multisession, workers = params_general$n_cores)
+    future::plan(future.callr::callr, workers = params_general$n_cores)
     
     cat("lidR::rasterize_terrain()")
     dtm <- rasterize_terrain(ctg, res = resolution, algorithm = tin())
@@ -3305,7 +3317,7 @@ make.dtm_highest = function(params_general, path_output = "", name_raster = "dtm
     opt_filter(ctg) <- "-keep_class 2"
     opt_progress(ctg) <- T
     
-    future::plan(future::multisession, workers = params_general$n_cores)
+    future::plan(future.callr::callr, workers = params_general$n_cores)
     
     zmax_catalog <- catalog_apply(ctg, function(las_chunk) {
       r <- grid_metrics(las_chunk, ~max(Z, na.rm = TRUE), res = resolution)
@@ -3372,11 +3384,11 @@ make.dsm_highest = function(params_general, path_output = "", name_raster = "dsm
     opt_output_files(ctg) <- file.path(path_output, "Chunk_{ID}_dsm_highest")
     opt_chunk_size(ctg) <- size_tile
     opt_chunk_buffer(ctg) <- size_buffer
-    opt_progress(ctg) <- TRUE
+    opt_progress(ctg) <- T
     opt_filter(ctg) <- "-keep_first"
     opt_laz_compression(ctg) <- TRUE
     
-    future::plan(future::multisession, workers = params_general$n_cores)
+    future::plan(future.callr::callr, workers = params_general$n_cores)
     
     make_dsm_highest <- function(las_chunk, ...) {
       las <- readLAS(las_chunk)
@@ -3564,7 +3576,7 @@ make.chm_pitfree = function(params_general, path_output = "", name_raster = "chm
     opt_filter(ctg) = "-drop_withheld"
     opt_chunk_buffer(ctg) = params_general$buffer
     opt_output_files(ctg) = paste0(path_output,"/{*}")
-    opt_progress(ctg) = FALSE
+    opt_progress(ctg) = T
     
     normalize_height(ctg, algorithm = tin(), res = step) # no kill option
     
@@ -3575,7 +3587,7 @@ make.chm_pitfree = function(params_general, path_output = "", name_raster = "chm
     opt_filter(ctg.normalized) = "-drop_withheld"
     opt_chunk_buffer(ctg.normalized) = params_general$buffer
     opt_output_files(ctg.normalized) = paste0(path_output,"/{*}")
-    opt_progress(ctg.normalized) = FALSE # deactivate rendering of progress
+    opt_progress(ctg.normalized) = T # deactivate rendering of progress
     rasterize_canopy(ctg.normalized,res = step, algorithm = pitfree(max_edge = kill, thresholds = layers_pitfree, subcircle = subcircle))
   }
   
@@ -4198,8 +4210,8 @@ make.dsm_locallyadaptive = function(params_general = params_general, path_output
   opt_output_files(ctg) <- file.path(path_output, "chunk_{ID}_lspikefree")
   opt_progress(ctg) <- T
   
-  # future::plan(future::multisession, workers = params_general$n_cores)
-  future::plan(future::multisession, workers = params_general$n_cores)
+  # future::plan(future.callr::callr, workers = params_general$n_cores)
+  future::plan(future.callr::callr, workers = params_general$n_cores)
   
   
   r <- rasterize_canopy(ctg, res = step, lspikefree(height_buffer = 0.5))
@@ -4629,7 +4641,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             opt_output_files(ctg) <- file.path(path_output_local, "chunk_{ID}_initial_classif")
             opt_progress(ctg) <- T
             
-            future::plan(future::multisession, workers = params_general$n_cores)
+            future::plan(future.callr::callr, workers = params_general$n_cores)
             
             majority_class <- function(z) {
               v = which.max(table(z))
@@ -4644,6 +4656,12 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             
             future::plan(future::sequential)
             gc()
+            
+            print(parallelly::availableCores(which = "all"))
+            print(utils::sessionInfo())
+            
+            # browser()
+            # browser()
             
           }
         
@@ -4827,7 +4845,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             ans = exec(pipeline, 
                        on = files, 
                        ncores = params_general$n_cores,  
-                       progress = TRUE)
+                       progress = T)
           }
           
           time_ground_basic = as.numeric(NA)
@@ -5905,7 +5923,9 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpd
         reclassify = T
         # path_output_laznorm = ""
         # size_buffer = ifelse(dir_current$name_acquisition %like% "pd_0.5", 100, ifelse(dir_current$name_acquisition %like% "pd_1", 50, size_buffer)) # forced extension of buffering for specific pulse density thinned point clouds # TODO: remove
-        cat("Size buffer:",size_buffer,"\n")
+        cat("Tile size:", size_tile, "\n")
+        cat("Size buffer:", size_buffer, "\n")
+        
         
         status = tryCatch(
           process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile,deduplicate = deduplicate, denoise = denoise, reclassify = reclassify, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step),

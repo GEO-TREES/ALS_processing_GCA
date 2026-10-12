@@ -85,9 +85,9 @@ source(file_helperfunctions)
 # standard processing script, using a fixed tile size
 name_job = "gca"
 type_file = "laz"
-dir_dataset = ""
-dir_processed =  ""
-tmpdir_processing = "" 
+dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_all/"
+dir_processed =  "../03_processed_Sebitoli9102026"
+tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_Sebitoli"
 path_lastools = ""
 resolution = 1.0
 n_cores = 10
@@ -97,7 +97,7 @@ size_buffer = 25
 # Not all parameters are useful with regards to the new open source version, has to be checked
 
 force.utm = "from_metadata"          # force reprojection of system into UTM (and meter) coordinates; necessary for all files that are registered in feet, otherwise output will be in feet
-force.recompute = F  # Set to TRUE to ignore any checkpoint and reprocess everything from scratch    # force reprocessing; usually set to FALSE, useful when computation has been interrupted for external reasons (power cutofff) and needs to be restarted, because only unprocessed data subsets will be reprocessed
+force.recompute = T  # Set to TRUE to ignore any checkpoint and reprocess everything from scratch    # force reprocessing; usually set to FALSE, useful when computation has been interrupted for external reasons (power cutofff) and needs to be restarted, because only unprocessed data subsets will be reprocessed
 remove.vlr = F    # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all vlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating vlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
 remove.evlr = F   # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all evlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating evlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
 use.blast2dem = T # should be activated by default as it improves (or makes possible) TIN construction in very dense point clouds, but: not tested on Linux so far
