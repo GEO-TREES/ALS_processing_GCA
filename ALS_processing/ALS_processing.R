@@ -85,9 +85,9 @@ source(file_helperfunctions)
 # standard processing script, using a fixed tile size
 name_job = "gca"
 type_file = "laz"
-dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_all/"
-dir_processed =  "../03_processed_Sebitoli9102026"
-tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_Sebitoli"
+dir_dataset = "/home/karl/work/data/America/Misiones/"
+dir_processed =  "/home/karl/work/dev/ALS_processing_GCA/03_processed_MisionesTEST"
+tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_MisionesTEST"
 path_lastools = ""
 resolution = 1.0
 n_cores = 10
@@ -102,6 +102,11 @@ remove.vlr = F    # probably not necessary in most cases, but should be generall
 remove.evlr = F   # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all evlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating evlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
 use.blast2dem = T # should be activated by default as it improves (or makes possible) TIN construction in very dense point clouds, but: not tested on Linux so far
 type_architecture = "64" # only needed if 32bit Windows should be forced; 32 can be a bit more permissive, particularly for blast2dem
+
+system(paste("taskset -cp", Sys.getpid()))
+
+# debug(process.dataset)
+# debug(process.datasubset)
 
 results = process.dataset(
   name_job = name_job
@@ -124,31 +129,96 @@ results = process.dataset(
   , retile = T
 )
 
-# # other parameters
-# metadata = NULL
-# cleanup = T
-# nbclusters_forced = NULL
-# remove.buffer = F
-# factor_rescale = NULL
-# path_output_lazclean = ""
-# path_output_laznorm = ""
-# types_dsm = c("tin","lspikefree")
-# params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1) # do not modify, this is calibrated for maximum robustness
-# resolution_sumstatspc = NULL
-# add.timestamp = F
-# estimate.laserpenetration = F
-# type_os = "automatic"
-# by_file = F
-# perturbation_max = 0.1 # do not modify
-# timeout_lspikefree_max = 600 # do not modify
-# overwrite.crs = F
-# is.stdtime = NA
-# height_lim = 125
-# angle_lim = NULL
-# class_rm = c()
-# exclass_rm = c()
-# force.type_point = NULL
-# logfile = ""
-# patterns_skip = c()
-# print.summary_job = F
+# #%%%%%%%%%%%%%%%%%%#
+# ##### 1. Setup #####
+# #%%%%%%%%%%%%%%%%%%#
+# # use up-to-date versions of R version, R packages and LAStools! 
+# # update.packages()
 # 
+# # # set working directory
+# this_file = grep("^--file=", commandArgs(), value = TRUE)
+# this_file = gsub("^--file=", "", this_file)
+# if(length(this_file) == 0) this_file = rstudioapi::getSourceEditorContext()$path
+# path = dirname(this_file)
+# setwd(path)
+# 
+# # load helper function
+# file_helperfunctions = "./ALS_processing_helperfunctions.R"
+# source(file_helperfunctions)
+# 
+# #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+# ##### 2. Processing parameters (fixed tile size) #####
+# #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+# # standard processing script, using a fixed tile size
+# name_job = "gca"
+# type_file = "laz"
+# dir_dataset = "/mnt/ecodata/LiDAR_fromRawToProc/Africa_CAfrica_CG_AMAP_PPloton_Loundoungou2025/01_raw/"
+# dir_processed =  "/home/karl/work/dev/ALS_processing_GCA/03_processed_Loundoungou06112026"
+# tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_Loundoungou06112026"
+# path_lastools = ""
+# resolution = 1.0
+# n_cores = 10
+# size_tile = 100
+# size_buffer = 25
+# 
+# # Not all parameters are useful with regards to the new open source version, has to be checked
+# 
+# force.utm = "from_metadata"          # force reprojection of system into UTM (and meter) coordinates; necessary for all files that are registered in feet, otherwise output will be in feet
+# force.recompute = T  # Set to TRUE to ignore any checkpoint and reprocess everything from scratch    # force reprocessing; usually set to FALSE, useful when computation has been interrupted for external reasons (power cutofff) and needs to be restarted, because only unprocessed data subsets will be reprocessed
+# remove.vlr = F    # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all vlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating vlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
+# remove.evlr = F   # probably not necessary in most cases, but should be generally activated. The option leads to the removal of all evlrs AFTER the CRS of the first raster product is set. The CRS will be transmitted to all other raster products, so outputs will not be affected. By deactivating evlrs afterwards we prevent problems with further terra or lastools processing due to odd projection information, which sometimes causes an excess of warnings/errors (and shutdown of parallel processing) or blast2dem to fail
+# use.blast2dem = T # should be activated by default as it improves (or makes possible) TIN construction in very dense point clouds, but: not tested on Linux so far
+# type_architecture = "64" # only needed if 32bit Windows should be forced; 32 can be a bit more permissive, particularly for blast2dem
+# 
+# system(paste("taskset -cp", Sys.getpid()))
+# 
+# results = process.dataset(
+#   name_job = name_job
+#   , type_file = type_file
+#   , dir_dataset = dir_dataset
+#   , dir_processed = dir_processed
+#   , tmpdir_processing = tmpdir_processing
+#   , path_lastools = path_lastools
+#   , resolution = resolution
+#   , n_cores = n_cores
+#   , size_tile = size_tile
+#   , size_buffer = size_buffer
+#   , force.utm = force.utm
+#   , remove.vlr = remove.vlr
+#   , remove.evlr = remove.evlr
+#   , type_architecture = type_architecture
+#   , use.blast2dem = use.blast2dem
+#   , patterns_skip = c() # skipping the processing of some folders
+#   , cleanup = T
+#   , retile = T
+# )
+# 
+# 
+# # # other parameters
+# # metadata = NULL
+# # cleanup = T
+# # nbclusters_forced = NULL
+# # remove.buffer = F
+# # factor_rescale = NULL
+# # path_output_lazclean = ""
+# # path_output_laznorm = ""
+# # types_dsm = c("tin","lspikefree")
+# # params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1) # do not modify, this is calibrated for maximum robustness
+# # resolution_sumstatspc = NULL
+# # add.timestamp = F
+# # estimate.laserpenetration = F
+# # type_os = "automatic"
+# # by_file = F
+# # perturbation_max = 0.1 # do not modify
+# # timeout_lspikefree_max = 600 # do not modify
+# # overwrite.crs = F
+# # is.stdtime = NA
+# # height_lim = 125
+# # angle_lim = NULL
+# # class_rm = c()
+# # exclass_rm = c()
+# # force.type_point = NULL
+# # logfile = ""
+# # patterns_skip = c()
+# # print.summary_job = F
+# # 

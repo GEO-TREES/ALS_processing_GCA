@@ -21,6 +21,9 @@ library(parallel) # for custom parallel processing
 # library(doParallel)
 library(future)
 
+system(paste("taskset -cp", Sys.getpid()))
+
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%#
 #### 0. Info functions ####
 #%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -1073,36 +1076,33 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
 
     angle_lim = NULL
     
-    filter = c(ifelse(!is.null(angle_lim), paste("-drop_abs_scan_angle_above", angle_lim, sep = " "),""),
+    opt_filter = c(ifelse(!is.null(angle_lim), paste("-drop_abs_scan_angle_above", angle_lim, sep = " "),""),
               "classification %out% 7 18",
               "-drop_withheld")
     
-    output_filename <- file.path(path_output, "*.laz")
+    opt_attributes = c("Intensity", "ReturnNumber", "NumberOfReturns", "Synthetic", "Withheld", "Classification", "ScanAngle", "UserData", "PointSourceID", "gpstime", "R", "G", "B", "NIR")
+    
+    output_filename <- file.path(path_output, "*.copc.laz")
 
     epsg_code <- as.numeric(strsplit(metadata$acq_crs, split = ":")[[1]][2])
 
-    clean_data_pipeline <-  lasR::reader(
-      filter = filter
-    ) + lasR::set_crs(epsg_code) + lasR::write_las(output_filename)
+    clean_data_pipeline <-  lasR::reader(filter = opt_filter) + 
+      lasR::set_crs(epsg_code) + 
+      lasR::keep_attributes(opt_attributes) +
+      lasR::write_copc(output_filename)
 
-    files <- list.files(params_general$path_data, pattern = paste0("\\.", type_file), full.names = TRUE)
+    ctg <- lidR::readALScatalog(list.files(params_general$path_data, pattern = paste0("\\.", type_file), full.names = TRUE))
+    opt_chunk_size(ctg) = 100
 
     lasR::exec(
       clean_data_pipeline,
-      on = files,
+      on = ctg,
       ncores = params_general$n_cores,
       progress = T
     )
     
-    # cl <- makeCluster(params_general$n_cores)
-    # registerDoParallel(cl)
-    # 
-    # 
-    # foreach(filename = files, .combine = c) %dopar% {
-    #   las2las_custom_function(filename, path_output, angle_lim, metadata, size_tile)
-    # }
-    # 
-    # stopCluster(cl)
+    browser()
+    browser()
   }
   
   if(update.path == TRUE){
@@ -4656,13 +4656,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             
             future::plan(future::sequential)
             gc()
-            
-            print(parallelly::availableCores(which = "all"))
-            print(utils::sessionInfo())
-            
-            # browser()
-            # browser()
-            
           }
         
           cat("\nClassification files analysis called...\n")
