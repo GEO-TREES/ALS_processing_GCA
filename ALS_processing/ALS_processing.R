@@ -79,15 +79,20 @@ setwd(path)
 file_helperfunctions = "./ALS_processing_helperfunctions.R"
 source(file_helperfunctions)
 
+geotrees_helperfunctions = "/home/karl/work/dev/ALS_processing/ALS_processing_functions.R"
+source(geotrees_helperfunctions)
+
+system(paste("taskset -cp", Sys.getpid()))
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 ##### 2. Processing parameters (fixed tile size) #####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 # standard processing script, using a fixed tile size
 name_job = "gca"
 type_file = "laz"
-dir_dataset = "/home/karl/work/data/America/Misiones/"
-dir_processed =  "/home/karl/work/dev/ALS_processing_GCA/03_processed_MisionesTEST"
-tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_MisionesTEST"
+dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_test/"
+dir_processed =  "../03_processed_SebitoliTEST"
+tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_SebitoliTEST"
 path_lastools = ""
 resolution = 1.0
 n_cores = 10
@@ -222,3 +227,4 @@ results = process.dataset(
 # # patterns_skip = c()
 # # print.summary_job = F
 # # 
+

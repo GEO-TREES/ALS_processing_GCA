@@ -1065,44 +1065,70 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
     
     # lasindex(params_general)
   } else {
-
     cat("las2las.initial OpenSource version!\n")
-
-    # drop noise, withheld, high returns
-    # TODO:
-    # - add metadata/fields filter
-    # - keep withheld ?
-    # - remove foreach
-
+    
+    # browser()
+    # browser()
+    # 
+    # # Clustering
+    # 
+    # # Importing outline, waiting for final find_clusters function
+    # outline = sf::read_sf("/home/karl/work/dev/ALS_processing_GCA/ALS_processing/test_outline/outline_localCRS.gpkg")
+    # 
+    # ctg <- lidR::readALScatalog(list.files(params_general$path_data, 
+    #                                        pattern = paste0("\\.", type_file), 
+    #                                        full.names = TRUE))
+    # opt_chunk_size(ctg) = 50
+    # 
+    # plot(ctg)
+    # 
+    # ctg = catalog_retile(ctg)
+    # 
+    # outline = st_transform(outline, st_crs(ctg))
+    # 
+    # ctg = catalog_intersect(ctg, outline$geom)
+    # ctg = clip_roi(ctg, outline)
+    # 
+    # browser()
+    # browser()
+    
+    
     angle_lim = NULL
     
-    opt_filter = c(ifelse(!is.null(angle_lim), paste("-drop_abs_scan_angle_above", angle_lim, sep = " "),""),
-              "classification %out% 7 18",
-              "-drop_withheld")
+    opt_filter = c(ifelse(!is.null(angle_lim), 
+                          paste("-drop_abs_scan_angle_above", 
+                                angle_lim, 
+                                sep = " "),
+                          ""),
+                   "classification %out% 7 18",
+                   "-drop_withheld")
     
-    opt_attributes = c("Intensity", "ReturnNumber", "NumberOfReturns", "Synthetic", "Withheld", "Classification", "ScanAngle", "UserData", "PointSourceID", "gpstime", "R", "G", "B", "NIR")
+    opt_attributes = c("Intensity", "ReturnNumber", "NumberOfReturns", 
+                       "Synthetic", "Withheld", "Classification", 
+                       "ScanAngle", "UserData", "PointSourceID", 
+                       "gpstime", "R", "G", "B", "NIR")
     
     output_filename <- file.path(path_output, "*.copc.laz")
 
     epsg_code <- as.numeric(strsplit(metadata$acq_crs, split = ":")[[1]][2])
 
-    clean_data_pipeline <-  lasR::reader(filter = opt_filter) + 
+    pipeline <-  lasR::reader(filter = opt_filter) + 
       lasR::set_crs(epsg_code) + 
       lasR::keep_attributes(opt_attributes) +
       lasR::write_copc(output_filename)
 
-    ctg <- lidR::readALScatalog(list.files(params_general$path_data, pattern = paste0("\\.", type_file), full.names = TRUE))
-    opt_chunk_size(ctg) = 100
+    ctg <- lidR::readALScatalog(list.files(params_general$path_data, 
+                                           pattern = paste0("\\.", type_file), 
+                                           full.names = TRUE))
+    opt_chunk_size(ctg) = size_tile
 
     lasR::exec(
-      clean_data_pipeline,
+      pipeline,
       on = ctg,
       ncores = params_general$n_cores,
       progress = T
     )
-    
-    browser()
-    browser()
+
   }
   
   if(update.path == TRUE){
@@ -4312,6 +4338,10 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
   
   has.path_lastools = check.path_lastools(path_lastools = path_lastools)
   
+  # pathoutput = make_paths(option = "geotrees", path_root = )
+  # pathoutput$classification_supplied
+  # pathoutput$lastools
+  
   #if(has.path_lastools == T){
   if(T){
     # create a new temporary path and the output path
@@ -4488,11 +4518,11 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       # OK for open source
       params_general_baseline = las2las.initial(params_general = params_general_baseline, metadata=metadata, size_tile=size_tile, force.utm = force.utm_auto,remove.vlr = F, remove.evlr = F, factor_rescale = factor_rescale, angle_lim = angle_lim, update.path = T, class_rm = class_rm, exclass_rm = exclass_rm, type_point = force.type_point)
       
-      # TO DO for open source (secondary priority)
+      # NOT NEEDED IN OPEN-SOURCE
       lasinfo.repair(params_general = params_general_baseline)
     }
     
-    # TO DO for open source (secondary priority)
+    # OPEN SOURCE: DATA IS ALREADY TILED AT THIS POINT, POTENTIALLY EVEN LESS NEEDED AFTER TILING
     refine = NULL
     if(size_tile == "adaptive"){
       #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -4553,7 +4583,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
         
         # process
         if(size_KB_input >= 10){
-          
+
           if(retile == "include.adjacents"){
             step_processing = paste0("retiling with adjacents")
             
@@ -4603,59 +4633,61 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             # cat("\nRetiling\n")
             # params_general = lastile(params_general = params_general,size_tile = size_tile, refine = refine, size_MB_input = size_MB_input)
           }
-          
+        
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nGenerating output from untreated point cloud\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           
           step_processing = paste0("initial classification")
           
+            # GEOTREES QUALITY ASSESSMENT RASTERS
+            f.quality_scan(file.path(path_output, paste0("quality_scan", addendum_name,".tif")), 
+                           params_general$path_data, 
+                           opt_res=10, 
+                           opt_cores=params_general$n_cores)
+            
           params_general_nocleanup = copy(params_general)
           params_general_nocleanup$cleanup = F
 
           cat("\nGenerate initial classifications raster called...\n")
           
+          
           if(!is.voidstring(params_general$path_lastools))
           {
             call.lastools(command_lastools = "lasgrid", 
-                          arguments_lastools = paste0("-classification -step ",resolution), 
+                          arguments_lastools = paste0("-classification -step ", resolution), 
                           type_output = "tif", 
                           params_general = params_general_nocleanup,
                           update.path = F)
           }
           else
           {
+            
             cat("\nOpen source version\n")
+            system(paste("taskset -cp", Sys.getpid()))
 
+
+            browser()
+            browser()
+            
             path_output_local = file.path(params_general$path_data, "lasgrid")
             if(!dir.exists(path_output_local)) dir.create(path_output_local, recursive = TRUE)
             
-            # files.input = list.files(path = params_general$path_data, pattern = "\\.laz", full.names = TRUE)
-            # files_names.input = list.files(path = params_general$path_data, pattern = "\\.laz", full.names = FALSE)
-            
-            ctg <- readLAScatalog(params_general$path_data)
+            ctg <- readLAScatalog(params_general$path_data, select = "xyzc")
             crs_scan <- crs(ctg)
             
             opt_chunk_size(ctg)   <- size_tile
-            opt_chunk_buffer(ctg) <- size_buffer
+            opt_chunk_buffer(ctg) <- params_general$buffer
             opt_output_files(ctg) <- file.path(path_output_local, "chunk_{ID}_initial_classif")
             opt_progress(ctg) <- T
             
             future::plan(future.callr::callr, workers = params_general$n_cores)
-            
-            majority_class <- function(z) {
-              v = which.max(table(z))
-              v = as.numeric(names(v))
-              return(v)
-            }
-            
-            catalog_apply(ctg, function(las_chunk) {
-              r <- grid_metrics(las_chunk, ~majority_class(Classification), res = resolution)
-              return(r)}
-            )
-            
+            r <- als2canopy:::pixel_metrics_aligned(ctg, 
+                                                    ~als2canopy::get.class_highest(Z, Classification), 
+                                                    res = resolution)
             future::plan(future::sequential)
             gc()
+
           }
         
           cat("\nClassification files analysis called...\n")
@@ -4683,7 +4715,9 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           cat("\nGenerate classifications raster called...\n")
           if(length(classifications_unique) > 1){
             # only create output when it is informative
-            writeRaster(classifications, filename = file.path(path_output,paste0("classifications_supplied",addendum_name,".tif")), overwrite = T)
+            writeRaster(classifications, 
+                        filename = file.path(path_output, paste0("classifications_supplied", addendum_name,".tif")), 
+                        overwrite = T)
           }
           if(params_general$cleanup == T) file.remove(files_classification)
           cat("\nGenerate classifications raster done!\n")
