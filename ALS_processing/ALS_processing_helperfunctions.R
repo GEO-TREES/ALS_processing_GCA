@@ -1092,9 +1092,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
     # browser()
     # browser()
     
-    
     angle_lim = NULL
-    
     opt_filter = c(ifelse(!is.null(angle_lim), 
                           paste("-drop_abs_scan_angle_above", 
                                 angle_lim, 
@@ -1991,7 +1989,7 @@ summarize.lasinfo = function(path){
 # deduplicate data
 # strict scheme is applied, i.e. only exact duplicates (x, y, z) are removed, and not just x y duplicates (default in LAStools)
 lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
-  
+
   # define output directory
   if(path_output == ""){
     path_output = file.path(params_general$path_data,"lasduplicate")
@@ -2023,50 +2021,44 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
     
     # lasindex(params_general)
     
-  } else {
+    if(params_general$cleanup == T) cleanup.files(params_general$path_data)
+    
+    if(update.path == TRUE){
+      cat("Amending file path and reindexing\n")
+      params_general$path_data = path_output
+      params_general$type_file = "laz"
+      cat("Amended file path returned\n")
+      return(params_general)
+      }
+    } else {
     
     cat("lasduplicate open source called...\n")
-    
-    output_filename <- file.path(path_output, "*.laz")
-
-    pipeline <- lasR::reader(filter = lasR::drop_duplicates()) + lasR::write_las(output_filename)
-    
-    files <- list.files(file.path.system(type_os = params_general$type_os, params_general$path_data), 
+    files <- list.files(file.path.system(type_os = params_general$type_os, 
+                                         params_general$path_data), 
                         pattern = "*.laz$", full.names = TRUE)
+    output_filename <- file.path(path_output, "*.laz")
     
-    lasR::exec(
-      pipeline,
-      on = files,
-      ncores = params_general$n_cores,
-      with = list(chunk = size_tile),
-      progress = T
-    )
+    pipeline = lasR::reader_las(filter = params_general$opt_filter_read) + 
+      
+      # either keep provider's noise classification or reset it to class 1
+      params_general$opt_noise +
+      
+      # reset points not classified as water or built environment
+      lasR::edit_attribute(filter = lasR::drop_class(c(6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)),
+                           attribute = "Classification", 
+                           value = 1)
     
-    # # --- 4. Run parallel loop ---
-    # foreach(
-    #   filename = files,
-    #   .combine = c
-    #   # .packages = c("lasR", "tools"),
-    #   # .export = c("lasduplicate_custom_function")
-    # ) %dopar% {
-    #   lasduplicate_custom_function(
-    #     file = filename,
-    #     path_output = path_output,
-    #     size_tile = size_tile)
-    # }
-    
-    # stopCluster(cl)
-    cat("lasduplicate open source done!\n")
-  }
-  
-  if(params_general$cleanup == T) cleanup.files(params_general$path_data)
-  
-  if(update.path == TRUE){
-    cat("Amending file path and reindexing\n")
-    params_general$path_data = path_output
-    params_general$type_file = "laz"
-    cat("Amended file path returned\n")
+    # lasR::exec(
+    #   pipeline,
+    #   on = files,
+    #   ncores = params_general$n_cores,
+    #   with = list(chunk = size_tile),
+    #   progress = T
+    # )
+    params_general$open_pipeline = pipeline
     return(params_general)
+    
+    cat("lasduplicate open source done!\n")
   }
 }
 
@@ -4355,6 +4347,8 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       addendum_name = paste0("_",addendum_name)
     }
     
+    paths = make.paths(path_output = path_output, format = "geotrees")
+    
     #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
     cat("\nRemove old data from temporary directory and add new data\n")
     #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -4637,20 +4631,13 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nGenerating output from untreated point cloud\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          
+
           step_processing = paste0("initial classification")
           
-            # GEOTREES QUALITY ASSESSMENT RASTERS
-            f.quality_scan(file.path(path_output, paste0("quality_scan", addendum_name,".tif")), 
-                           params_general$path_data, 
-                           opt_res=10, 
-                           opt_cores=params_general$n_cores)
-            
           params_general_nocleanup = copy(params_general)
           params_general_nocleanup$cleanup = F
-
-          cat("\nGenerate initial classifications raster called...\n")
           
+          cat("\nGenerate initial classifications raster called...\n")
           
           if(!is.voidstring(params_general$path_lastools))
           {
@@ -4659,84 +4646,72 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                           type_output = "tif", 
                           params_general = params_general_nocleanup,
                           update.path = F)
+            
+            cat("\nClassification files analysis called...\n")
+            files_classification = list.files.nonzero(path = file.path(params_general$path_data, "lasgrid"), pattern = ".tif", full.names = TRUE)
+            classifications = terra::vrt(files_classification)
+            crs_scan = terra::crs(classifications)
+            
+            # update crs based on path, if no crs is available from lidar file
+            # assign the same crs to all rasters
+            if(is.na(crs_scan) | is.null(crs_scan) | crs_scan == "" | overwrite.crs == T){
+              crs_scan = get.crs_from_path(path_file = path_input)
+              
+              if(is.na(crs_scan) | is.null(crs_scan) | crs_scan == ""){
+                crs_scan = gsub("overwrite.with:", "", metadata$acq_crs, fixed = T) # new in v.47: allow an overwrite.with option
+                terra::crs(classifications) = crs_scan
+              } else {
+                # TODO
+                terra::crs(classifications) = crs_scan
+              }
+            }
+            
+            classifications_unique = unique(classifications, na.rm = T)[,1]
+            cat("\nClassification files analysis done!\n")
+            
+            cat("\nGenerate classifications raster called...\n")
+            if(length(classifications_unique) > 1){
+              # only create output when it is informative
+              writeRaster(classifications, 
+                          filename = paths$path_classification_provider, 
+                          overwrite = T)
+            }
+            if(params_general$cleanup == T) file.remove(files_classification)
+            cat("\nGenerate classifications raster done!\n")
+            
+            cat("\nGenerate dtm_nooverhangs called...\n")
+            
+            if(any(classifications_unique == 2)){
+              # only create a DTM when there are ground points in the supplied classification
+              # (presupposes that at least one ground pixel is visible, but that should be a given)
+              status = tryCatch(
+                {
+                  make.dtm_nooverhangs(params_general = params_general, path_output = "", path_products = path_output, name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", threshold_drop = 10, classes_ground = "2 8",arguments_additional = "")
+                  # las2dem(params_general = params_general, path_output = "", name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", option = "dtm")
+                  #
+                },
+                error = function(e){
+                  return("DTM could not be obtained\n")
+                }
+              )
+            }
+            cat("\nGenerate dtm_nooverhangs done!\n")
           }
           else
           {
             
+            # GEOTREES QUALITY ASSESSMENT RASTERS
             cat("\nOpen source version\n")
-            system(paste("taskset -cp", Sys.getpid()))
-
-
-            browser()
-            browser()
-            
-            path_output_local = file.path(params_general$path_data, "lasgrid")
-            if(!dir.exists(path_output_local)) dir.create(path_output_local, recursive = TRUE)
-            
-            ctg <- readLAScatalog(params_general$path_data, select = "xyzc")
-            crs_scan <- crs(ctg)
-            
-            opt_chunk_size(ctg)   <- size_tile
-            opt_chunk_buffer(ctg) <- params_general$buffer
-            opt_output_files(ctg) <- file.path(path_output_local, "chunk_{ID}_initial_classif")
-            opt_progress(ctg) <- T
-            
-            future::plan(future.callr::callr, workers = params_general$n_cores)
-            r <- als2canopy:::pixel_metrics_aligned(ctg, 
-                                                    ~als2canopy::get.class_highest(Z, Classification), 
-                                                    res = resolution)
-            future::plan(future::sequential)
-            gc()
-
+            f.rasters_initial(path_02_input = params_general$path_data,
+                              path_dtm_provider = paths$path_dtm_provider,
+                              path_classification_provider = paths$path_classification_provider,
+                              path_quality_scan = paths$path_quality_scan,
+                              # opt_res = resolution, 
+                              opt_cores=params_general$n_cores)
           }
-        
-          cat("\nClassification files analysis called...\n")
-          files_classification = list.files.nonzero(path = file.path(params_general$path_data, "lasgrid"), pattern = ".tif", full.names = TRUE)
-          classifications = terra::vrt(files_classification)
-          crs_scan = terra::crs(classifications)
-          
-          # update crs based on path, if no crs is available from lidar file
-          # assign the same crs to all rasters
-          if(is.na(crs_scan) | is.null(crs_scan) | crs_scan == "" | overwrite.crs == T){
-            crs_scan = get.crs_from_path(path_file = path_input)
-            
-            if(is.na(crs_scan) | is.null(crs_scan) | crs_scan == ""){
-              crs_scan = gsub("overwrite.with:", "", metadata$acq_crs, fixed = T) # new in v.47: allow an overwrite.with option
-              terra::crs(classifications) = crs_scan
-            } else {
-              # TODO
-              terra::crs(classifications) = crs_scan
-            }
-          }
-          
-          classifications_unique = unique(classifications,na.rm = T)[,1]
-          cat("\nClassification files analysis done!\n")
-          
-          cat("\nGenerate classifications raster called...\n")
-          if(length(classifications_unique) > 1){
-            # only create output when it is informative
-            writeRaster(classifications, 
-                        filename = file.path(path_output, paste0("classifications_supplied", addendum_name,".tif")), 
-                        overwrite = T)
-          }
-          if(params_general$cleanup == T) file.remove(files_classification)
-          cat("\nGenerate classifications raster done!\n")
-          
-          # if(!is.voidstring(params_general$path_lastools))
-          # {
-          #   # now we can safely delete user information
-          #   if(remove.vlr == T & remove.evlr == F){
-          #     params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_vlrs",type_output = "laz",update.path = T,params_general = params_general)
-          #   } else if(remove.vlr == F & remove.evlr == T){
-          #     params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_evlrs",type_output = "laz",update.path = T,params_general = params_general)
-          #   } else if(remove.vlr == T & remove.evlr == T){
-          #     params_general = call.lastools(command_lastools = "las2las",arguments_lastools = "-remove_all_vlrs -remove_all_evlrs",type_output = "laz",update.path = T,params_general = params_general)
-          #   }
-          # }
           
           # TODO: mettre le code de JR dans une fonction remove overhanging points
-          
-          cat("Open source REMOVE OVERHANGING POINTS")
+          # cat("Open source REMOVE OVERHANGING POINTS")
           
           # # Remove overhangings points
           # remove_hoverhangs_ground_points = function(res = 1)
@@ -4756,54 +4731,57 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           # 
           # catalog_apply(ctg, remove_hoverhangs_ground_points())
           
-          
-          cat("\nGenerate dtm_nooverhangs called...\n")
-          
-          if(any(classifications_unique == 2)){
-            # only create a DTM when there are ground points in the supplied classification
-            # (presupposes that at least one ground pixel is visible, but that should be a given)
-            status = tryCatch(
-              {
-                make.dtm_nooverhangs(params_general = params_general, path_output = "", path_products = path_output, name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", threshold_drop = 10, classes_ground = "2 8",arguments_additional = "")
-                # las2dem(params_general = params_general, path_output = "", name_raster = "dtm_supplied", kill = 200, step = resolution, type_output = "tif", option = "dtm")
-                #
-              },
-              error = function(e){
-                return("DTM could not be obtained\n")
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+            cat("\nCheck reprojection\n")
+            #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+            
+            step_processing = paste0("reprojection check")
+            
+            # new in v.47: we check this early on so that processing fails already at this step if something is wrong with CRS
+            if(is.na(crs_scan)){
+              cat("ERROR! No coordinate reference system detected either in metadata or in point cloud. The pipeline will fail. Provide correctly referenced metadata or update the point cloud.\n")
+              if(file.exists(logfile)){
+                logfile_dt = data.table(path = path_output, issue = paste0("ERROR! No coordinate reference system detected either in metadata or in point cloud. The pipeline will fail. Provide correctly referenced metadata or update the point cloud."))
+                fwrite(logfile_dt, file = logfile, append = T)
               }
-            )
-          }
-          cat("\nGenerate dtm_nooverhangs done!\n")
-          
-          #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          cat("\nCheck reprojection\n")
-          #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          
-          step_processing = paste0("reprojection check")
-          
-          # new in v.47: we check this early on so that processing fails already at this step if something is wrong with CRS
-          if(is.na(crs_scan)){
-            cat("ERROR! No coordinate reference system detected either in metadata or in point cloud. The pipeline will fail. Provide correctly referenced metadata or update the point cloud.\n")
-            if(file.exists(logfile)){
-              logfile_dt = data.table(path = path_output, issue = paste0("ERROR! No coordinate reference system detected either in metadata or in point cloud. The pipeline will fail. Provide correctly referenced metadata or update the point cloud."))
-              fwrite(logfile_dt, file = logfile, append = T)
             }
+            
+            extent_scan = as.polygons(ext(classifications))
+            terra::crs(extent_scan) = crs_scan
+            #extent_scan_projected = project(extent_scan,"EPSG:4326")
           }
-          
-          extent_scan = as.polygons(ext(classifications))
-          terra::crs(extent_scan) = crs_scan
-          #extent_scan_projected = project(extent_scan,"EPSG:4326")
           
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nCustom processing\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
           
-          if(deduplicate == T){
-            step_processing = paste0("deduplicate")
-            cat("\nDuplicate (xyz) removal\n")
-            params_general = lasduplicate(params_general)
+          if(is.voidstring(params_general$path_lastools)){
+            
+            params_general$opt_filter_read = c("-drop_withheld
+                                               -drop_duplicates
+                                               -drop_return 0
+                                               -drop_number_of_returns 0")
+            params_general$opt_reset_noise = TRUE
+            ###############################################
+            # reset or keep provider's noise classification
+            if (params_general$opt_reset_noise == TRUE) {
+              params_general$opt_noise = 
+                # reset provider's classification to 1
+                lasR::edit_attribute(filter = "Classification %in% 7 18", attribute = "Classification", value = 1)
+            } else {
+              params_general$opt_noise = 
+                # set provider's noise classification to class 18 (high noise)
+                edit_attribute(filter = "Classification %in% 7 18", attribute = "Classification", value = 18)
+            }
           }
-          
+
+          # debug(lasduplicate)
+          step_processing = paste0("deduplicate")
+          cat("\nDuplicate (xyz) removal\n")
+          params_general = lasduplicate(params_general)
+
           if(!is.voidstring(params_general$path_lastools))
           {
             # Sorting to be implemented in open source
@@ -4830,7 +4808,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
               step_processing = paste0("denoise")
               cat("\nNoise removal\n")
               step_noise = 4
-              density_points_cutoff = 0.5 * quantile(summary_bytile$density_points,0.1)
+              density_points_cutoff = 0.5 * quantile(summary_bytile$density_points, 0.1)
               isolated = as.integer(0.007 * density_points_cutoff * (3 * step_noise)^2)
               if(isolated < 5) isolated = 5
               params_general = lasnoise(params_general = params_general, step = step_noise, isolated = isolated)
@@ -4847,12 +4825,13 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           }
           else{
 
-            # Info to be implemented in open source
-            lasinfo(params_general = params_general)
-            load(file.path(params_general$path_data,"summary_bytile.RData"))
-            load(file.path(params_general$path_data,"summary_full.RData"))
             
-            #Noise removal
+            # # Info to be implemented in open source
+            # lasinfo(params_general = params_general)
+            # load(file.path(params_general$path_data,"summary_bytile.RData"))
+            # load(file.path(params_general$path_data,"summary_full.RData"))
+            
+            # Noise removal
             cat("Open source denoising ! ")
             path_output_denoising = file.path(params_general$path_data, "lasnoise")
             if(!dir.exists(path_output_denoising)) dir.create(path_output_denoising)
@@ -4861,19 +4840,30 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             files <- list.files(file.path.system(type_os = params_general$type_os, params_general$path_data), 
                                 pattern = "*.laz$", full.names = TRUE)
             
-            step_noise = 4
-            density_points_cutoff = 0.5 * quantile(summary_bytile$density_points, 0.1)
-            isolated = as.integer(0.007 * density_points_cutoff * (3 * step_noise)^2)
-            if(isolated < 5) isolated = 5
+            # THESE PARAMETERS SHOULD BE STORED IN PARAMS_GENERAL
+            # step_noise = 4
+            # density_points_cutoff = 0.5 * quantile(summary_bytile$density_points, 0.1)
+            # isolated = as.integer(0.007 * density_points_cutoff * (3 * step_noise)^2)
+            # if(isolated < 5) isolated = 5
+            browser()
+            browser()
+            params_general$opt_ivf = list("step_noise" = 4,
+                                          "isolated" = 5)
             
-            pipeline = lasR::classify_with_ivf(res = step_noise, n = isolated, class = 18L) + 
-              lasR::write_las(output_filename)
+            params_general$open_pipeline = params_general$open_pipeline + 
+              lasR::classify_with_ivf(res = params_general$opt_ivf$step_noise, n = params_general$opt_ivf$isolated, class = 18L)
             
-            ans = exec(pipeline, 
-                       on = files, 
-                       ncores = params_general$n_cores,  
-                       progress = T)
+            # pipeline = lasR::classify_with_ivf(res = step_noise, n = isolated, class = 18L) + 
+            #   lasR::write_las(output_filename)
+            # 
+            # ans = exec(pipeline, 
+            #            on = files, 
+            #            ncores = params_general$n_cores,  
+            #            progress = T)
           }
+          
+          browser()
+          browser()
           
           time_ground_basic = as.numeric(NA)
           time_ground_refinement = as.numeric(NA)
@@ -6166,3 +6156,250 @@ compare.raster = function(file_rst1, file_rst2, factor_extent = 0.1){
   return(data.table(rmse = as.numeric(sqrt(global(diff*diff,"mean",na.rm = T))), bias = as.numeric(global(diff,"mean",na.rm = T))))
 }
 
+# ADDITIONAL FUNCTIONS FROM MERGING PIPELINES
+
+pixel_metrics_aligned = function(las, func, res, ...){
+  # formulas built with bquote() are calls, which lidR would try to capture unevaluated
+  if(!inherits(func, "formula")) func = stats::as.formula(func, env = parent.frame())
+  r = lidR::pixel_metrics(las, func, res = res, start = c(0, -1e-7), ...)
+  terra::ext(r) = terra::ext(round(as.vector(terra::ext(r))/res) * res)
+  return(r)
+}
+
+get.class_highest = function(z, x){
+  # classes in the order of their lowest points (equal elevations: higher class codes first); the last class has the highest lowest point
+  x = unique(x[order(z, -x)])
+  return(as.numeric(x[length(x)]))
+}
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# generate quality layers describing the scan ##################################
+f.quality_scan = function(path_quality_scan,
+                          path_02_input,
+                          # CRS_site,
+                          # opt_chunk,
+                          opt_res,
+                          opt_cores
+                          # opt_filter
+) {
+  
+  # # write LAX files if they don't exist
+  # exec(write_lax(), on = path_02_input)
+  
+  # read in the input files as a LAScatalog
+  CTG = suppressMessages(lidR::readLAScatalog(path_02_input))
+  # drop empty chunks
+  CTG = CTG[CTG$Number.of.point.records > 0]
+  # set the coordinate reference system
+  # lidR::st_crs(CTG) = CRS_site
+  
+  # # set the chunk size to something memory safe
+  # opt_chunk_size(CTG) = opt_chunk
+  # opt_chunk_buffer(CTG) = opt_res
+  opt_select(CTG) = "xyzanr"
+  # opt_filter(CTG) = opt_filter
+  
+  # run in parallel
+  future::plan(multisession, workers = opt_cores)
+  
+  # generate the metrics for each subset of points
+  m = suppressWarnings(
+    lidR::pixel_metrics(CTG,
+                        ~metrics_scan_quality(z = Z,
+                                              a = ScanAngle,
+                                              rn = ReturnNumber,
+                                              nr = NumberOfReturns
+                                              #Classification = Classification
+                        ),
+                        res = opt_res)
+  )
+  future::plan(future::sequential)
+  
+  # |>
+  #   # convert to a spatraster; grid_metrics returns a rasterstack from the raster package; names won't be written correctly to TIF format
+  #   terra::rast()
+  
+  # define a circular window with a 15 m radius
+  window = terra::focalMat(m,
+                           d = 15,
+                           type = "circle",
+                           fillNA = TRUE)
+  
+  d = m %>%
+    tidyterra::select(n_1st, n_points) %>%
+    terra::ifel(is.na(.), 0, .) %>%
+    terra::focal(w = window,
+                 fun = "sum",
+                 na.policy = "omit",
+                 na.rm = TRUE,
+                 fillvalue = 0) %>%
+    tidyterra::rename("d_1st" = "n_1st",
+                      "d_points" = "n_points")
+  
+  quality_scan = c(m, d)
+  
+  # save the metrics
+  terra::writeRaster(quality_scan, 
+                     filename = path_quality_scan,
+                     filetype = "COG", 
+                     datatype = "FLT4S",
+                     gdal = c("OVERVIEW_RESAMPLING=BILINEAR"),
+                     overwrite = TRUE)
+}
+
+make.paths = function(path_output, format = c("gca", "geotrees")){
+  
+  format = match.arg(format)
+  
+  if(format == "geotrees"){
+    
+    # directory structure; these can be renamed, as long as they stay in this order
+    dir_output_list = c(
+      paste0(path_output, "/_L1"),
+      paste0(path_output, "/_L2"),
+      paste0(path_output, "/_L3"),
+      paste0(path_output, "/custom"),
+      #
+      paste0(path_output, "/_L1/tiles"),
+      paste0(path_output, "/_L1/plots"),
+      paste0(path_output, "/_L1/quadrats"),
+      paste0(path_output, "/custom/GCA"),
+      paste0(path_output, "/custom/canopy"),
+      paste0(path_output, "/custom/terrain")
+    )
+    
+    
+    # construct paths
+    paths = list(
+      # output root
+      "path_INFO"                = paste0(path_output, "/_INFO.txt"),
+      "path_summary"             = paste0(path_output, "/summary.csv"),
+      "path_outline_localCRS"    = paste0(path_output, "/outline_localCRS.gpkg"),
+      "path_outline_WGS84"       = paste0(path_output, "/outline_WGS84.gpkg"),
+      
+      # L1: point clouds
+      "path_INFO_L1"             = paste0(dir_output_list[1], "/_INFO_L1.txt"),
+      
+      # L2: rasters
+      "path_INFO_L2"             = paste0(dir_output_list[2], "/_INFO_L2.txt"),
+      "path_chm_highest"         = paste0(dir_output_list[2], "/chm_highest.tif"),
+      "path_chm_tin"             = paste0(dir_output_list[2], "/chm_tin.tif"),
+      "path_chm_lspikefree"      = paste0(dir_output_list[2], "/chm_lspikefree.tif"),
+      "path_dsm_highest"         = paste0(dir_output_list[2], "/dsm_highest.tif"),
+      "path_dsm_tin"             = paste0(dir_output_list[2], "/dsm_tin.tif"),
+      "path_dsm_lspikefree"      = paste0(dir_output_list[2], "/dsm_lspikefree.tif"),
+      "path_dtm"                 = paste0(dir_output_list[2], "/dtm.tif"),
+      "path_quality_scan"        = paste0(dir_output_list[2], "/quality_scan.tif"),
+      "path_quality_ground"      = paste0(dir_output_list[2], "/quality_ground.tif"),
+      "path_masks"               = paste0(dir_output_list[2], "/masks.tif"),
+      
+      # L3: derived canopy metrics
+      "path_INFO_L3"             = paste0(dir_output_list[3], "/_INFO_L3.txt"),
+      "path_metrics_canopy_100m" = paste0(dir_output_list[3], "/metrics_canopy_100m.tif"),
+      "path_metrics_canopy_50m"  = paste0(dir_output_list[3], "/metrics_canopy_50m.tif"),
+      "path_metrics_canopy_25m"  = paste0(dir_output_list[3], "/metrics_canopy_25m.tif"),
+      "path_outline_100m"        = paste0(dir_output_list[3], "/outline_100m.gpkg"),
+      "path_outline_50m"         = paste0(dir_output_list[3], "/outline_50m.gpkg"),
+      "path_outline_25m"         = paste0(dir_output_list[3], "/outline_25m.gpkg"),
+      "path_metrics_canopy_quadrats_100m" = paste0(dir_output_list[3], "/metrics_canopy_quadrats_100m.gpkg"),
+      "path_metrics_canopy_quadrats_50m"  = paste0(dir_output_list[3], "/metrics_canopy_quadrats_50m.gpkg"),
+      "path_metrics_canopy_quadrats_25m"  = paste0(dir_output_list[3], "/metrics_canopy_quadrats_25m.gpkg"),
+      
+      # custom/GCA
+      "path_classification_provider" = paste0(dir_output_list[8], "/classification_provider.tif"),
+      "path_classification"          = paste0(dir_output_list[8], "/classification.tif"),
+      "path_dtm_provider"            = paste0(dir_output_list[8], "/dtm_provider.tif"),
+      
+      # custom/canopy
+      "path_metrics_canopy_test_25m"  = paste0(dir_output_list[9], "/metrics_canopy_test_25m.tif"),
+      "path_metrics_canopy_test_50m"  = paste0(dir_output_list[9], "/metrics_canopy_test_50m.tif"),
+      "path_metrics_canopy_test_100m" = paste0(dir_output_list[9], "/metrics_canopy_test_100m.tif"),
+      
+      # custom/terrain
+      "path_terrain_5m"               = paste0(dir_output_list[10], "/terrain_5m.tif"),
+      "path_metrics_terrain_25m"      = paste0(dir_output_list[10], "/metrics_terrain_25m.tif"),
+      "path_metrics_terrain_50m"      = paste0(dir_output_list[10], "/metrics_terrain_50m.tif"),
+      "path_metrics_terrain_100m"     = paste0(dir_output_list[10], "/metrics_terrain_100m.tif"),
+      "path_metrics_terrain_quadrats" = paste0(dir_output_list[10], "/metrics_terrain_quadrats.gpkg")
+    )
+    
+  } else {
+    
+    # for the GCA outputs, put all outputs in the same directory
+    # construct paths
+    paths = list(
+      # output root
+      "path_INFO"                = paste0(path_output, "/_INFO.txt"),
+      "path_summary"             = paste0(path_output, "/summary.csv"),
+      "path_outline_localCRS"    = paste0(path_output, "/outline_localCRS.gpkg"),
+      "path_outline_WGS84"       = paste0(path_output, "/outline_WGS84.gpkg"),
+      
+      # L1: point clouds
+      "path_INFO_L1"             = paste0(path_output, "/_INFO_L1.txt"),
+      
+      # L2: rasters
+      "path_INFO_L2"             = paste0(path_output, "/_INFO_L2.txt"),
+      "path_chm_highest"         = paste0(path_output, "/chm_highest.tif"),
+      "path_chm_tin"             = paste0(path_output, "/chm_tin.tif"),
+      "path_chm_lspikefree"      = paste0(path_output, "/chm_lspikefree.tif"),
+      "path_dsm_highest"         = paste0(path_output, "/dsm_highest.tif"),
+      "path_dsm_tin"             = paste0(path_output, "/dsm_tin.tif"),
+      "path_dsm_lspikefree"      = paste0(path_output, "/dsm_lspikefree.tif"),
+      "path_dtm"                 = paste0(path_output, "/dtm.tif"),
+      "path_quality_scan"        = paste0(path_output, "/quality_scan.tif"),
+      "path_quality_ground"      = paste0(path_output, "/quality_ground.tif"),
+      "path_masks"               = paste0(path_output, "/masks.tif"),
+      
+      # L3: derived canopy metrics
+      "path_INFO_L3"             = paste0(path_output, "/_INFO_L3.txt"),
+      "path_metrics_canopy_100m" = paste0(path_output, "/metrics_canopy_100m.tif"),
+      "path_metrics_canopy_50m"  = paste0(path_output, "/metrics_canopy_50m.tif"),
+      "path_metrics_canopy_25m"  = paste0(path_output, "/metrics_canopy_25m.tif"),
+      "path_outline_100m"        = paste0(path_output, "/outline_100m.gpkg"),
+      "path_outline_50m"         = paste0(path_output, "/outline_50m.gpkg"),
+      "path_outline_25m"         = paste0(path_output, "/outline_25m.gpkg"),
+      "path_metrics_canopy_quadrats_100m" = paste0(path_output, "/metrics_canopy_quadrats_100m.gpkg"),
+      "path_metrics_canopy_quadrats_50m"  = paste0(path_output, "/metrics_canopy_quadrats_50m.gpkg"),
+      "path_metrics_canopy_quadrats_25m"  = paste0(path_output, "/metrics_canopy_quadrats_25m.gpkg"),
+      
+      # custom/GCA
+      "path_classification_provider" = paste0(path_output, "/classification_provider.tif"),
+      "path_classification"          = paste0(path_output, "/classification.tif"),
+      "path_dtm_provider"            = paste0(path_output, "/dtm_provider.tif"),
+      
+      # custom/canopy
+      "path_metrics_canopy_test_25m"  = paste0(path_output, "/metrics_canopy_test_25m.tif"),
+      "path_metrics_canopy_test_50m"  = paste0(path_output, "/metrics_canopy_test_50m.tif"),
+      "path_metrics_canopy_test_100m" = paste0(path_output, "/metrics_canopy_test_100m.tif"),
+      
+      # custom/terrain
+      "path_terrain_5m"               = paste0(path_output, "/terrain_5m.tif"),
+      "path_metrics_terrain_25m"      = paste0(path_output, "/metrics_terrain_25m.tif"),
+      "path_metrics_terrain_50m"      = paste0(path_output, "/metrics_terrain_50m.tif"),
+      "path_metrics_terrain_100m"     = paste0(path_output, "/metrics_terrain_100m.tif"),
+      "path_metrics_terrain_quadrats" = paste0(path_output, "/metrics_terrain_quadrats.gpkg")
+    )
+    
+  }
+  
+  # normalize all paths (mustWork = FALSE because most files don't exist yet)
+  paths = lapply(paths, normalizePath, winslash = "/", mustWork = FALSE)
+  
+  # normalize all paths (mustWork = FALSE because most files don't exist yet)
+  paths = lapply(paths, normalizePath, winslash = "/", mustWork = FALSE)
+  
+  # directories that need to exist: every folder a file will be written to
+  dirs_output = dirname(unlist(paths))
+  
+  # for the nested structure, also include folders with no files listed (tiles, plots, quadrats)
+  if(format == "geotrees"){
+    dirs_output = c(dirs_output, normalizePath(dir_output_list, winslash = "/", mustWork = FALSE))
+  }
+  
+  # make the directories if they don't exist
+  for(dir_path in unique(dirs_output)){
+    if(!dir.exists(dir_path)) dir.create(dir_path, recursive = TRUE)
+  }
+  
+  return(paths)
+}
