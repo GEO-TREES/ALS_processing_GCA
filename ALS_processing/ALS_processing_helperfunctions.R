@@ -1066,9 +1066,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
     # lasindex(params_general)
   } else {
     cat("las2las.initial OpenSource version!\n")
-    
-    # browser()
-    # browser()
+
     # 
     # # Clustering
     # 
@@ -1089,9 +1087,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
     # ctg = catalog_intersect(ctg, outline$geom)
     # ctg = clip_roi(ctg, outline)
     # 
-    # browser()
-    # browser()
-    
+
     angle_lim = NULL
     opt_filter = c(ifelse(!is.null(angle_lim), 
                           paste("-drop_abs_scan_angle_above", 
@@ -2021,15 +2017,6 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
     
     # lasindex(params_general)
     
-    if(params_general$cleanup == T) cleanup.files(params_general$path_data)
-    
-    if(update.path == TRUE){
-      cat("Amending file path and reindexing\n")
-      params_general$path_data = path_output
-      params_general$type_file = "laz"
-      cat("Amended file path returned\n")
-      return(params_general)
-      }
     } else {
     
     cat("lasduplicate open source called...\n")
@@ -2055,11 +2042,21 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
     #   with = list(chunk = size_tile),
     #   progress = T
     # )
+    
     params_general$open_pipeline = pipeline
-    return(params_general)
+
+    }
+    if(params_general$cleanup == T) cleanup.files(params_general$path_data)
+  
+    if(update.path == TRUE){
+      cat("Amending file path and reindexing\n")
+      params_general$path_data = path_output
+      params_general$type_file = "laz"
+      cat("Amended file path returned\n")
+      return(params_general)
+    }
     
     cat("lasduplicate open source done!\n")
-  }
 }
 
 # denoise
@@ -2165,18 +2162,28 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
     } 
   } else {
     
-    files <- list.files(path = params_general$path_data, pattern = paste0("\\.", params_general$type_file, "$"), full.names = TRUE)
+    # files <- list.files(path = params_general$path_data, pattern = paste0("\\.", params_general$type_file, "$"), full.names = TRUE)
+    # 
+    # output_filename <- paste0(path_output, "/*_lasgroundnew.laz")
+
+    # # PTD PARAMS ???
+    # params_general$opt_ptd_res = 
+    # params_general$opt_ptd_angle = 
+    # params_general$opt_ptd_distance = 
     
-    output_filename <- paste0(path_output, "/*_lasgroundnew.laz")
+    params_general$open_pipeline  = params_general$open_pipeline + 
+      lasR::classify_with_ptd()
     
-    pipeline = lasR::classify_with_ptd() + lasR::write_las(output_filename)
-    
-    lasR::exec(
-      pipeline,
-      on = files,
-      ncores = params_general$n_cores,
-      progress = T
-    )
+    # pipeline = lasR::classify_with_ptd() + lasR::write_las(output_filename)
+    # 
+    # lasR::exec(
+    #   pipeline,
+    #   on = files,
+    #   ncores = params_general$n_cores,
+    #   progress = T
+    # )
+  
+    return(params_general)
     
   }
   
@@ -2844,22 +2851,30 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
     # lasindex(params_general)
   } else {
     cat("filter.height open source called...\n")
+    output_filename <- file.path(path_output, "*.copc.laz")
+
+    params_general$open_pipeline = params_general$open_pipeline +
+      lasR::hag() + 
+      edit_attribute(filter = paste0("HAG > ", height_lim), 
+                     attribute = "Classification", 
+                     value = 18) + 
+      lasR::write_copc(output_filename)
     
-    tri <- triangulate(filter = keep_ground_and_water())
-    extra <- add_extrabytes("int", "HAG", "Height Above Ground")
-    trans <- transform_with(tri, store_in_attribute = "HAG")
-    filter <- lasR::delete_points(paste0("HAG > ", height_lim))
-    
-    filter_height_pipeline =
-      
-      lasR::reader_las() + tri + extra + trans + filter +
-      
-      write_las(paste0(path_output, "/*.laz"))
-    
-    exec(filter_height_pipeline,
-         on = params_general$path_data,
-         ncores = params_general$n_cores,
-         progress = T)
+    # tri <- triangulate(filter = keep_ground_and_water())
+    # extra <- add_extrabytes("int", "HAG", "Height Above Ground")
+    # trans <- transform_with(tri, store_in_attribute = "HAG")
+    # filter <- lasR::delete_points(paste0("HAG > ", height_lim))
+    # 
+    # filter_height_pipeline =
+    #   
+    #   lasR::reader_las() + tri + extra + trans + filter +
+    #   
+    #   write_las(paste0(path_output, "/*.laz"))
+    # 
+    # exec(params_general$open_pipeline,
+    #      on = params_general$path_data,
+    #      ncores = params_general$n_cores,
+    #      progress = T)
     
     cat("filter.height open source done!\n")
   }
@@ -4347,7 +4362,10 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       addendum_name = paste0("_",addendum_name)
     }
     
-    paths = make.paths(path_output = path_output, format = "geotrees")
+    paths = make.paths(
+      path_input = path_input,
+      path_output = path_output, 
+      format = "geotrees")
     
     #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
     cat("\nRemove old data from temporary directory and add new data\n")
@@ -4508,9 +4526,21 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       if(force.utm_auto == T){
         cat("\nConverting point cloud to UTM \n")
       }
-      
+
       # OK for open source
-      params_general_baseline = las2las.initial(params_general = params_general_baseline, metadata=metadata, size_tile=size_tile, force.utm = force.utm_auto,remove.vlr = F, remove.evlr = F, factor_rescale = factor_rescale, angle_lim = angle_lim, update.path = T, class_rm = class_rm, exclass_rm = exclass_rm, type_point = force.type_point)
+      params_general_baseline = las2las.initial(params_general = params_general_baseline, 
+                                                path_output = paths$path_02_input,
+                                                metadata=metadata, 
+                                                size_tile=size_tile, 
+                                                force.utm = force.utm_auto, 
+                                                remove.vlr = F, 
+                                                remove.evlr = F, 
+                                                factor_rescale = factor_rescale, 
+                                                angle_lim = angle_lim, 
+                                                update.path = T, 
+                                                class_rm = class_rm, 
+                                                exclass_rm = exclass_rm, 
+                                                type_point = force.type_point)
       
       # NOT NEEDED IN OPEN-SOURCE
       lasinfo.repair(params_general = params_general_baseline)
@@ -4705,7 +4735,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             f.rasters_initial(path_02_input = params_general$path_data,
                               path_dtm_provider = paths$path_dtm_provider,
                               path_classification_provider = paths$path_classification_provider,
-                              path_quality_scan = paths$path_quality_scan,
+                              path_quality_scan = paths$path_quality_scan_initial,
                               # opt_res = resolution, 
                               opt_cores=params_general$n_cores)
           }
@@ -4833,6 +4863,8 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             
             # Noise removal
             cat("Open source denoising ! ")
+            
+            # REALLY NEED THIS ?
             path_output_denoising = file.path(params_general$path_data, "lasnoise")
             if(!dir.exists(path_output_denoising)) dir.create(path_output_denoising)
             output_filename <- file.path(path_output_denoising, "*.laz")
@@ -4845,13 +4877,22 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             # density_points_cutoff = 0.5 * quantile(summary_bytile$density_points, 0.1)
             # isolated = as.integer(0.007 * density_points_cutoff * (3 * step_noise)^2)
             # if(isolated < 5) isolated = 5
-            browser()
-            browser()
-            params_general$opt_ivf = list("step_noise" = 4,
-                                          "isolated" = 5)
+
+            params_general$open_pipeline = params_general$open_pipeline +
+              lasR::classify_with_sor()
             
-            params_general$open_pipeline = params_general$open_pipeline + 
-              lasR::classify_with_ivf(res = params_general$opt_ivf$step_noise, n = params_general$opt_ivf$isolated, class = 18L)
+            # if(write_intermediate) {
+            #   params_general$open_pipeline + 
+            #     lasR::write_las()}
+            
+            # if(second_noise_filtering) {
+            #   
+            #   params_general$opt_ivf_step = 4
+            #   params_general$opt_ivf_isolated = 5
+            #   
+            #   params_general$open_pipeline = params_general$open_pipeline + 
+            #     lasR::classify_with_ivf(res = params_general$opt_ivf_step, n = params_general$opt_ivf_isolated, class = 18L)
+            # }
             
             # pipeline = lasR::classify_with_ivf(res = step_noise, n = isolated, class = 18L) + 
             #   lasR::write_las(output_filename)
@@ -4861,9 +4902,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             #            ncores = params_general$n_cores,  
             #            progress = T)
           }
-          
-          browser()
-          browser()
           
           time_ground_basic = as.numeric(NA)
           time_ground_refinement = as.numeric(NA)
@@ -4896,122 +4934,136 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
               time_ground_refinement = as.numeric(difftime(end_time,start_time,units = "mins"))
             }
           }
-          
+
           if(height_lim > 0){
             step_processing = paste0("drop heights above ", height_lim)
             cat("\nDrop canopy heights above",height_lim,"\n")
-            params_general = filter.height(params_general = params_general, path_output = "", height_lim = height_lim, update.path = TRUE)
+            params_general = filter.height(params_general = params_general, 
+                                           path_output = paths$path_L1_tiles, 
+                                           height_lim = height_lim, update.path = TRUE)
           }
           
-          #%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          cat("\nGet summary stats\n")
-          #%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          
-          lasinfo(params_general = params_general)
-          load(file.path(params_general$path_data,"summary_bytile.RData"))
-          load(file.path(params_general$path_data,"summary_full.RData"))
-          
-          # add infos on ground classification
-          summary_full$time_ground_basic = time_ground_basic
-          summary_full$time_ground_refinement = time_ground_refinement
-          
-          #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          cat("\nGet pulse density and scan angle\n")
-          #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-
-          scan_angle_field = get.scan_angle_field(
-            path_data  = params_general$path_data, 
-            type_file  = params_general$type_file
-          )
-          
-          step_processing = paste0("get pulsedensity rasters")
-          get.pulsedensity(params_general = params_general, path_output = "", step = resolution, scan_angle_field = scan_angle_field)
-
-          files_pulsedensity_firstlast = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"),
-                                                            pattern = "pulsedensity_[0-9]+\\.tif$", full.names = TRUE)
-          # using the virtual raster method from terra package
-          pulsedensity_firstlast = vrt(files_pulsedensity_firstlast)
-          names(pulsedensity_firstlast) = c("first","last")
-          terra::crs(pulsedensity_firstlast) = crs_scan
-          writeRaster(pulsedensity_firstlast, filename = file.path(path_output,paste0("pulsedensity_firstlast",addendum_name,".tif")), overwrite = T)
-
-          files_pulsedensity_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"),
-                                                            pattern = "pulsedensity_scan_angle[0-9]+\\.tif$", full.names = TRUE)
-          # using the virtual raster method from terra package
-          pulsedensity_scanangle = vrt(files_pulsedensity_scanangle)
-          terra::crs(pulsedensity_scanangle) = crs_scan
-          writeRaster(pulsedensity_scanangle, filename = file.path(path_output,paste0("pulsedensity_scanangle",addendum_name,".tif")), overwrite = T)
-
-          # create a pulse density mask (smooth within a radius of 5m)
-          # use median smoothing, so that a single pixel with high pulse density does not unduly influence the smoothed pulse
-          pulsedensity_first = terra::subset(pulsedensity_firstlast, "first")
-          pulsedensity_nona = ifel(!is.na(pulsedensity_first), pulsedensity_first, 0)
-          pulsedensity_smoothed = terra::focal(pulsedensity_nona, w = 11, fun = "median", na.rm = T)
-          mask_pd02 = clamp(pulsedensity_smoothed, lower = 2, values = F)
-          mask_pd02 = clamp(mask_pd02, upper = 1, values = T)
-          mask_pd04 = clamp(pulsedensity_smoothed, lower = 4, values = F)
-          mask_pd04 = clamp(mask_pd04, upper = 1, values = T)
-
-          writeRaster(mask_pd02, filename = file.path(path_output,paste0("mask_pd02",addendum_name,".tif")), overwrite = T)
-          writeRaster(mask_pd04, filename = file.path(path_output,paste0("mask_pd04",addendum_name,".tif")), overwrite = T)
-
-          # step_processing = paste0("get pulsedensity_scanangle rasters")
-
-          # # pulse density rasters, filtering for scan angles
-          # for(scanangle_abs_current in c(20)){
-          #   get.pulsedensity(params_general = params_general,path_output = file.path(params_general$path_data,"pulsedensity",paste0("pulsedensity",scanangle_abs_current)), step = resolution, scanangle_abs_max = scanangle_abs_current)
-          #
-          #   files_pulsedensity_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity",paste0("pulsedensity",scanangle_abs_current)), pattern = ".tif", full.names = TRUE)
-          #   # using the virtual raster method from terra package
-          #   pulsedensity_scanangle = vrt(files_pulsedensity_scanangle)
-          #   terra::crs(pulsedensity_scanangle) = crs_scan
-          #   writeRaster(pulsedensity_scanangle, filename = file.path(path_output,paste0("pulsedensity_scanangle",scanangle_abs_current,addendum_name,".tif")), overwrite = T)
-          #   unlink(x = file.path(path_output,paste0("pulsedensity",scanangle_abs_current)), recursive = T) # not needed for further processing
-          #
+          # SKIP QUALITY RASTERS - TO DO - TO CHECK
+          # 
+          # #%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          # cat("\nGet summary stats\n")
+          # #%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          # 
+          # lasinfo(params_general = params_general)
+          # load(file.path(params_general$path_data,"summary_bytile.RData"))
+          # load(file.path(params_general$path_data,"summary_full.RData"))
+          # 
+          # # add infos on ground classification
+          # summary_full$time_ground_basic = time_ground_basic
+          # summary_full$time_ground_refinement = time_ground_refinement
+          # 
+          # #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          # cat("\nGet pulse density and scan angle\n")
+          # #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          # 
+          # scan_angle_field = get.scan_angle_field(
+          #   path_data  = params_general$path_data, 
+          #   type_file  = params_general$type_file
+          # )
+          # 
+          # step_processing = paste0("get pulsedensity rasters")
+          # get.pulsedensity(params_general = params_general, path_output = "", step = resolution, scan_angle_field = scan_angle_field)
+          # 
+          # files_pulsedensity_firstlast = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"),
+          #                                                   pattern = "pulsedensity_[0-9]+\\.tif$", full.names = TRUE)
+          # # using the virtual raster method from terra package
+          # pulsedensity_firstlast = vrt(files_pulsedensity_firstlast)
+          # names(pulsedensity_firstlast) = c("first","last")
+          # terra::crs(pulsedensity_firstlast) = crs_scan
+          # writeRaster(pulsedensity_firstlast, filename = file.path(path_output,paste0("pulsedensity_firstlast",addendum_name,".tif")), overwrite = T)
+          # 
+          # files_pulsedensity_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"),
+          #                                                   pattern = "pulsedensity_scan_angle[0-9]+\\.tif$", full.names = TRUE)
+          # # using the virtual raster method from terra package
+          # pulsedensity_scanangle = vrt(files_pulsedensity_scanangle)
+          # terra::crs(pulsedensity_scanangle) = crs_scan
+          # writeRaster(pulsedensity_scanangle, filename = file.path(path_output,paste0("pulsedensity_scanangle",addendum_name,".tif")), overwrite = T)
+          # 
+          # # create a pulse density mask (smooth within a radius of 5m)
+          # # use median smoothing, so that a single pixel with high pulse density does not unduly influence the smoothed pulse
+          # pulsedensity_first = terra::subset(pulsedensity_firstlast, "first")
+          # pulsedensity_nona = ifel(!is.na(pulsedensity_first), pulsedensity_first, 0)
+          # pulsedensity_smoothed = terra::focal(pulsedensity_nona, w = 11, fun = "median", na.rm = T)
+          # mask_pd02 = clamp(pulsedensity_smoothed, lower = 2, values = F)
+          # mask_pd02 = clamp(mask_pd02, upper = 1, values = T)
+          # mask_pd04 = clamp(pulsedensity_smoothed, lower = 4, values = F)
+          # mask_pd04 = clamp(mask_pd04, upper = 1, values = T)
+          # 
+          # writeRaster(mask_pd02, filename = file.path(path_output,paste0("mask_pd02",addendum_name,".tif")), overwrite = T)
+          # writeRaster(mask_pd04, filename = file.path(path_output,paste0("mask_pd04",addendum_name,".tif")), overwrite = T)
+          # 
+          # # step_processing = paste0("get pulsedensity_scanangle rasters")
+          # 
+          # # # pulse density rasters, filtering for scan angles
+          # # for(scanangle_abs_current in c(20)){
+          # #   get.pulsedensity(params_general = params_general,path_output = file.path(params_general$path_data,"pulsedensity",paste0("pulsedensity",scanangle_abs_current)), step = resolution, scanangle_abs_max = scanangle_abs_current)
+          # #
+          # #   files_pulsedensity_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity",paste0("pulsedensity",scanangle_abs_current)), pattern = ".tif", full.names = TRUE)
+          # #   # using the virtual raster method from terra package
+          # #   pulsedensity_scanangle = vrt(files_pulsedensity_scanangle)
+          # #   terra::crs(pulsedensity_scanangle) = crs_scan
+          # #   writeRaster(pulsedensity_scanangle, filename = file.path(path_output,paste0("pulsedensity_scanangle",scanangle_abs_current,addendum_name,".tif")), overwrite = T)
+          # #   unlink(x = file.path(path_output,paste0("pulsedensity",scanangle_abs_current)), recursive = T) # not needed for further processing
+          # #
+          # # }
+          # 
+          # step_processing = paste0("get pulsedensity_lastreturn rasters")
+          # # pulse density, based on last returns
+          # # get.pulsedensity(params_general = params_general,path_output = file.path(params_general$path_data,"pulsedensity","pulsedensity_lastreturn"), step = resolution, keep_first = F)
+          # # files_pulsedensity_lastreturn = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity","pulsedensity_lastreturn"), pattern = ".tif", full.names = TRUE)
+          # # using the virtual raster method from terra package
+          # pulsedensity_last = terra::subset(pulsedensity_firstlast, "last")
+          # # pulsedensity_lastreturn = vrt(pulsedensity_last)
+          # terra::crs(pulsedensity_last) = crs_scan
+          # writeRaster(pulsedensity_last, filename = file.path(path_output,paste0("pulsedensity_lastreturn",addendum_name,".tif")), overwrite = T)
+          # unlink(x = file.path(path_output,"pulsedensity_lastreturn"), recursive = T) # not needed for further processing
+          # 
+          # step_processing = paste0("get scanangle_abs rasters")
+          # # same for scan angle
+          # # special tryCatch condition, in case there are problems with the scan angle field
+          # angle99th = NULL
+          # status = tryCatch(
+          #   {
+          #     get.scanangle_abs(params_general = params_general,path_output = "", step = resolution, scan_angle_field = scan_angle_field)
+          # 
+          #     files_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"scanangle_abs"), pattern = "\\.tif", full.names = TRUE)
+          # 
+          #     scanangle = vrt(files_scanangle);
+          #     terra::crs(scanangle) = crs_scan
+          #     #scanangle = ifel(is.na(scanangle) & !is.na(pulsedensity), 0, scanangle) # scanangles below a certain threshold seem to be returned without angle information by LAStools, so fill those up (theoretically, the pulse density raster does not capture all filled pixels, only last returns, but that should give a pretty good picture anyways)
+          # 
+          #     angle99th = round(as.numeric(global(scanangle,quantile,probs = 0.99,na.rm = T)),2)
+          # 
+          #     writeRaster(scanangle, filename = file.path(path_output,paste0("scanangle_abs",addendum_name,".tif")), overwrite = T)
+          # 
+          #     if (params_general$cleanup == T) file.remove(files_scanangle)
+          # 
+          #   }
+          #   , error = function(e){
+          #     return("WARNING! Scan angle could not be obtained\n")
+          #   }
+          # 
+          # )
+          # 
+          # if (params_general$cleanup == T) {
+          #   file.remove(files_pulsedensity_firstlast)
+          #   file.remove(files_pulsedensity_scanangle)
           # }
-
-          step_processing = paste0("get pulsedensity_lastreturn rasters")
-          # pulse density, based on last returns
-          # get.pulsedensity(params_general = params_general,path_output = file.path(params_general$path_data,"pulsedensity","pulsedensity_lastreturn"), step = resolution, keep_first = F)
-          # files_pulsedensity_lastreturn = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity","pulsedensity_lastreturn"), pattern = ".tif", full.names = TRUE)
-          # using the virtual raster method from terra package
-          pulsedensity_last = terra::subset(pulsedensity_firstlast, "last")
-          # pulsedensity_lastreturn = vrt(pulsedensity_last)
-          terra::crs(pulsedensity_last) = crs_scan
-          writeRaster(pulsedensity_last, filename = file.path(path_output,paste0("pulsedensity_lastreturn",addendum_name,".tif")), overwrite = T)
-          unlink(x = file.path(path_output,"pulsedensity_lastreturn"), recursive = T) # not needed for further processing
-
-          step_processing = paste0("get scanangle_abs rasters")
-          # same for scan angle
-          # special tryCatch condition, in case there are problems with the scan angle field
-          angle99th = NULL
-          status = tryCatch(
-            {
-              get.scanangle_abs(params_general = params_general,path_output = "", step = resolution, scan_angle_field = scan_angle_field)
-
-              files_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"scanangle_abs"), pattern = "\\.tif", full.names = TRUE)
-
-              scanangle = vrt(files_scanangle);
-              terra::crs(scanangle) = crs_scan
-              #scanangle = ifel(is.na(scanangle) & !is.na(pulsedensity), 0, scanangle) # scanangles below a certain threshold seem to be returned without angle information by LAStools, so fill those up (theoretically, the pulse density raster does not capture all filled pixels, only last returns, but that should give a pretty good picture anyways)
-
-              angle99th = round(as.numeric(global(scanangle,quantile,probs = 0.99,na.rm = T)),2)
-
-              writeRaster(scanangle, filename = file.path(path_output,paste0("scanangle_abs",addendum_name,".tif")), overwrite = T)
-
-              if (params_general$cleanup == T) file.remove(files_scanangle)
-
-            }
-            , error = function(e){
-              return("WARNING! Scan angle could not be obtained\n")
-            }
-
-          )
-
-          if (params_general$cleanup == T) {
-            file.remove(files_pulsedensity_firstlast)
-            file.remove(files_pulsedensity_scanangle)
-          }
+          # 
+          browser()
+          browser()
+          
+          f.rasters_initial(input_pipeline = params_general$open_pipeline, 
+                            paths$path_02_input,
+                            paths$path_dtm,
+                            paths$path_classification,
+                            paths$path_quality_scan,
+                            opt_cores = params_general$n_cores)
           
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nDTM creation with las2dem / blast2dem\n")
@@ -6247,7 +6299,7 @@ f.quality_scan = function(path_quality_scan,
                      overwrite = TRUE)
 }
 
-make.paths = function(path_output, format = c("gca", "geotrees")){
+make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
   
   format = match.arg(format)
   
@@ -6255,11 +6307,13 @@ make.paths = function(path_output, format = c("gca", "geotrees")){
     
     # directory structure; these can be renamed, as long as they stay in this order
     dir_output_list = c(
+      paste0(path_input, "./02_input"),
+      
       paste0(path_output, "/_L1"),
       paste0(path_output, "/_L2"),
       paste0(path_output, "/_L3"),
       paste0(path_output, "/custom"),
-      #
+      
       paste0(path_output, "/_L1/tiles"),
       paste0(path_output, "/_L1/plots"),
       paste0(path_output, "/_L1/quadrats"),
@@ -6267,7 +6321,6 @@ make.paths = function(path_output, format = c("gca", "geotrees")){
       paste0(path_output, "/custom/canopy"),
       paste0(path_output, "/custom/terrain")
     )
-    
     
     # construct paths
     paths = list(
@@ -6277,8 +6330,12 @@ make.paths = function(path_output, format = c("gca", "geotrees")){
       "path_outline_localCRS"    = paste0(path_output, "/outline_localCRS.gpkg"),
       "path_outline_WGS84"       = paste0(path_output, "/outline_WGS84.gpkg"),
       
+      # input pointclouds
+      "path_02_input"            = paste0(path_input, "./02_input"),
+      
       # L1: point clouds
       "path_INFO_L1"             = paste0(dir_output_list[1], "/_INFO_L1.txt"),
+      "path_L1_tiles"            = paste0(dir_output_list[5]),
       
       # L2: rasters
       "path_INFO_L2"             = paste0(dir_output_list[2], "/_INFO_L2.txt"),
@@ -6289,6 +6346,7 @@ make.paths = function(path_output, format = c("gca", "geotrees")){
       "path_dsm_tin"             = paste0(dir_output_list[2], "/dsm_tin.tif"),
       "path_dsm_lspikefree"      = paste0(dir_output_list[2], "/dsm_lspikefree.tif"),
       "path_dtm"                 = paste0(dir_output_list[2], "/dtm.tif"),
+      "path_quality_scan_initial"    = paste0(dir_output_list[2], "/quality_scan_initial.tif"),
       "path_quality_scan"        = paste0(dir_output_list[2], "/quality_scan.tif"),
       "path_quality_ground"      = paste0(dir_output_list[2], "/quality_ground.tif"),
       "path_masks"               = paste0(dir_output_list[2], "/masks.tif"),
@@ -6336,7 +6394,7 @@ make.paths = function(path_output, format = c("gca", "geotrees")){
       
       # L1: point clouds
       "path_INFO_L1"             = paste0(path_output, "/_INFO_L1.txt"),
-      
+
       # L2: rasters
       "path_INFO_L2"             = paste0(path_output, "/_INFO_L2.txt"),
       "path_chm_highest"         = paste0(path_output, "/chm_highest.tif"),
