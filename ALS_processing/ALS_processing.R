@@ -89,8 +89,8 @@ system(paste("taskset -cp", Sys.getpid()))
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 # standard processing script, using a fixed tile size
 name_job = "gca"
-type_file = "laz"
-dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_test/"
+type_file = "las"
+dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_test_clusters/"
 dir_processed =  "../03_processed_SebitoliTEST"
 tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_SebitoliTEST"
 path_lastools = ""

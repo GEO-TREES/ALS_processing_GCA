@@ -1035,7 +1035,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
 
   # define output directory
   if(path_output == ""){
-    path_output = file.path(params_general$path_data,"las2las")
+    path_output = file.path(params_general$path_data, "las2las")
   }
   if(!dir.exists(path_output)) dir.create(path_output)
   
@@ -1062,7 +1062,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
       ifelse(params_general$type_os == "Linux","2>&1", "") # crucial for Linux where LAStools seems to write to stderr
     )
   )
-    
+  
     # lasindex(params_general)
   } else {
     cat("las2las.initial OpenSource version!\n")
@@ -1122,23 +1122,24 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
       ncores = params_general$n_cores,
       progress = T
     )
-
+  }
+  
+  if (params_general$cleanup == T) {
+    cat("Removing copied files\n")
+    copied_files = list.files(params_general$path_data, 
+                              pattern=paste0("\\.", type_file), 
+                              full.names = TRUE)
+    file.remove(copied_files)
   }
   
   if(update.path == TRUE){
-    
-    if (params_general$cleanup == T) {
-      cat("Removing copied files\n")
-      copied_files = list.files(params_general$path_data, pattern=paste0("\\.", type_file), full.names = TRUE)
-      file.remove(copied_files)}
-    
     cat("Amending file path\n")
     params_general$path_data = path_output
     params_general$type_file = "laz"
     cat("Amended file path returned\n")
-    return(params_general)
   }
   
+  return(params_general)
 }
 
 # cluster of point cloud data
@@ -1352,7 +1353,150 @@ find.clusters_data = function(params_general, path_output = "", nbclusters_force
     return(list_params_general)
   }
 }
+
+#' Outlines of point cloud files (open-source backend)
+#'
+#' Used by [find.clusters_pc()]: for several files, the bounding boxes of the
+#' files (from the headers); for a single file, the outline of a TIN of the
+#' lowest point per 1 m cell with edges of at most 50 m ([lasR::hulls()]; the
+#' LAStools backend computes a concave hull with a concavity of 50 m).
+#'
+#' @param files Paths of the point cloud files.
+#' @return A [terra::SpatVector] of polygons with the attribute `files`, in the
+#'   CRS of the first file.
+#' @keywords internal
+get.outlines_open = function(files){
+  if(length(files) > 1){
+    outlines = lapply(files, function(file_las){
+      phb = readLASheader(file_las)@PHB
+      y = as.polygons(ext(phb[["Min X"]], phb[["Max X"]], phb[["Min Y"]], phb[["Max Y"]]))
+      y$files = file_las
+      return(y)
+    })
+    outlines = vect(outlines)
+  } else {
+    file_hull = tempfile(fileext = ".gpkg")
+    tri = lasR::triangulate(max_edge = 50)
+    lasR::exec(lasR::reader(filter = "-drop_withheld") + lasR::sampling_pixel(res = 1, method = "min") + tri + lasR::hulls(tri, ofile = file_hull), on = files, progress = FALSE)
+    outlines = aggregate(vect(file_hull))
+    values(outlines) = data.frame(files = files)
+  }
+  crs_files = get.crs_lidR(files[1])
+  terra::crs(outlines) = if(is.na(crs_files)) "" else crs_files$wkt
+  return(outlines)
+}
+
+find.clusters_data2 = function(params_general, path_output = "", nbclusters_forced = NULL){
   
+  files_tocluster = list.files(params_general$path_data,
+                               pattern = paste0("\\.", params_general$type_file, "$"),
+                               full.names = TRUE)
+  if(length(files_tocluster) == 0) stop("No point cloud files found in ", params_general$path_data)
+  
+  ctg = lidR::readALScatalog(files_tocluster)
+  ctg = ctg[ctg$Number.of.point.records > 0]
+  files_tocluster = ctg$filename
+  
+  ## 1. Outlines of each file
+  # several files: bounding boxes from the headers
+  # single file: outline of a TIN of the lowest point per 1 m cell (edges <= 50 m)
+  if(length(files_tocluster) > 1){
+    outlines_input = lapply(files_tocluster, function(file_las){
+      phb = readLASheader(file_las)@PHB
+      y = as.polygons(ext(phb[["Min X"]], phb[["Max X"]], phb[["Min Y"]], phb[["Max Y"]]))
+      y$files = file_las
+      return(y)
+    })
+    outlines_input = vect(outlines_input)
+  } else {
+    file_hull = tempfile(fileext = ".gpkg")
+    tri = lasR::triangulate(max_edge = 50)
+    lasR::exec(lasR::reader(filter = "-drop_withheld") +
+                 lasR::sampling_pixel(res = 1, method = "min") +
+                 tri +
+                 lasR::hulls(tri, ofile = file_hull),
+               on = files_tocluster, progress = FALSE)
+    outlines_input = aggregate(vect(file_hull))
+    values(outlines_input) = data.frame(files = files_tocluster)
+  }
+  
+  # CRS from the header of the first file (no get.crs_lidR)
+  crs_files = sf::st_crs(readLASheader(files_tocluster[1]))
+  terra::crs(outlines_input) = if(is.na(crs_files)) "" else crs_files$wkt
+  
+  ## 2. Buffer + adjacency graph
+  buffer_outlines = params_general$buffer
+
+  outlines_input_buffered = buffer_withsf(outlines_input, buffer_outlines) # implicitly removes invalid outlines
+  
+  outlines_adjacency = relate(outlines_input_buffered, outlines_input_buffered, "intersects")
+  outlines_graph = graph_from_adjacency_matrix(outlines_adjacency, mode = "undirected", diag = FALSE)
+  
+  ## 3. Clusters
+  outlines_clusters = NULL
+  if(!is.null(nbclusters_forced)){
+    nb_forced = round(nbclusters_forced)
+    if(nb_forced < 1 | nb_forced > length(outlines_input_buffered)){
+      cat("Could not force number of clusters (must be between 1 and the number of files)\n")
+    } else if(!is_connected(outlines_graph)){
+      cat("Could not force number of clusters: files form several disconnected groups, using those groups instead\n")
+    } else {
+      cat("Finding clusters of nearby point cloud files\n")
+      clusters = cluster_fluid_communities(outlines_graph, nb_forced)
+      outlines_clusters = list(membership = as.integer(membership(clusters)),
+                               no = length(unique(membership(clusters))))
+    }
+  }
+  if(is.null(outlines_clusters)){
+    cat("Finding clusters of disconnected point cloud files\n")
+    outlines_clusters = components(outlines_graph)
+  }
+  
+  outlines_input$cluster = outlines_clusters$membership
+  outlines_input$buffer = buffer_outlines
+  outlines_input_buffered$cluster = outlines_clusters$membership
+  outlines_input_buffered$buffer = buffer_outlines
+  
+  ## 4. Split into subfolders
+  nbclusters = outlines_clusters$no
+  list_params_general = vector(mode = "list", length = nbclusters)
+  
+  if(nbclusters > 1){
+    for(i in 1:nbclusters){
+      params_general_cluster = data.table::copy(params_general)
+      params_general_cluster$path_data = file.path(params_general$path_data, paste0("part_", i))
+      if(!dir.exists(params_general_cluster$path_data)) dir.create(params_general_cluster$path_data)
+      list_params_general[[i]] = params_general_cluster
+      
+      outlines_buffer = aggregate(outlines_input_buffered[outlines_input_buffered$cluster == i])
+      bufferfiles_current = outlines_input[is.related(outlines_input, outlines_buffer, "intersects") &
+                                             outlines_input$cluster != i]$files
+      
+      if(length(bufferfiles_current) > 0){
+        writeVector(outlines_buffer,
+                    filename = file.path(params_general_cluster$path_data, "outlines_buffer.shp"),
+                    overwrite = TRUE)
+        clip.files_open(bufferfiles_current, outlines_buffer, params_general_cluster$path_data)
+      }
+    }
+    
+    for(i in 1:nbclusters){
+      params_general_cluster = list_params_general[[i]]
+      files_current = outlines_input[outlines_input$cluster == i]$files
+      files_current_new = file.path(params_general_cluster$path_data, basename(files_current))
+      ok = file.rename(files_current, files_current_new)
+      if(!all(ok)) warning("Could not move ", sum(!ok), " file(s) into ", params_general_cluster$path_data)
+    }
+  } else {
+    list_params_general[[1]] = params_general
+  }
+  
+  ## 5. Output
+  writeVector(outlines_input, filename = file.path(params_general$path_data, "outlines_input.shp"), overwrite = TRUE)
+  
+  return(list_params_general)
+}
+
 # find adjacent tiles from other folders in the same directory
 add.adjacent = function(outlines_cluster, path_origin, path_moveto, type_file, buffer){
   
@@ -2021,9 +2165,9 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
     
     cat("lasduplicate open source called...\n")
     files <- list.files(file.path.system(type_os = params_general$type_os, 
-                                         params_general$path_data), 
+                                         params_general$path_02_input_cluster), 
                         pattern = "*.laz$", full.names = TRUE)
-    output_filename <- file.path(path_output, "*.laz")
+    # output_filename <- file.path(path_output, "*.laz")
     
     pipeline = lasR::reader_las(filter = params_general$opt_filter_read) + 
       
@@ -2100,7 +2244,8 @@ lasnoise = function(params_general, path_output = "", step = 3, isolated = 3, up
     
   } else {
     
-    files.input = list.files(path = params_general$path_data,pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
+    files.input = list.files(path = params_general$path_data,
+                             pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     ctg = readLAScatalog(files.input)
     
     opt_filter(ctg) = "-drop_withheld"
@@ -2172,7 +2317,7 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
     # params_general$opt_ptd_distance = 
     
     params_general$open_pipeline  = params_general$open_pipeline + 
-      lasR::classify_with_ptd()
+      lasR::classify_with_ptd(filter="-keep_last")
     
     # pipeline = lasR::classify_with_ptd() + lasR::write_las(output_filename)
     # 
@@ -2828,7 +2973,8 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
 
   # define output directory
   if(path_output == ""){
-    path_output = file.path(params_general$path_data,paste0("height_lim", height_lim))
+    path_output = file.path(params_general$path_data,
+                            paste0("height_lim", height_lim))
   }
   if(!dir.exists(path_output)) dir.create(path_output)
   
@@ -2847,6 +2993,16 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
         ifelse(params_general$type_os == "Linux","2>&1", "") # crucial for Linux where LAStools seems to write to stderr
       )
     )
+    
+    if(params_general$cleanup == T) cleanup.files(params_general$path_data)
+    
+    if(update.path == TRUE){
+      cat("Amending file path and reindexing\n")
+      params_general$path_data = path_output
+      params_general$type_file = "laz"
+      cat("Amended file path returned\n")
+      return(params_general)
+    }
     
     # lasindex(params_general)
   } else {
@@ -2876,17 +3032,8 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
     #      ncores = params_general$n_cores,
     #      progress = T)
     
-    cat("filter.height open source done!\n")
-  }
-  
-  if(params_general$cleanup == T) cleanup.files(params_general$path_data)
-  
-  if(update.path == TRUE){
-    cat("Amending file path and reindexing\n")
-    params_general$path_data = path_output
-    params_general$type_file = "laz"
-    cat("Amended file path returned\n")
     return(params_general)
+    cat("filter.height open source done!\n")
   }
 }
 
@@ -4362,11 +4509,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       addendum_name = paste0("_",addendum_name)
     }
     
-    paths = make.paths(
-      path_input = path_input,
-      path_output = path_output, 
-      format = "geotrees")
-    
     #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
     cat("\nRemove old data from temporary directory and add new data\n")
     #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -4527,9 +4669,15 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
         cat("\nConverting point cloud to UTM \n")
       }
 
-      # OK for open source
+      # if(is.voidstring(params_general_baseline$path_lastools)){
+      #   output = paths$path_02_input
+      # }
+      # else{
+      #   output = ""
+      # }
+
       params_general_baseline = las2las.initial(params_general = params_general_baseline, 
-                                                path_output = paths$path_02_input,
+                                                # path_output = output,
                                                 metadata=metadata, 
                                                 size_tile=size_tile, 
                                                 force.utm = force.utm_auto, 
@@ -4574,36 +4722,66 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
     #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
     
     # currently a bit slow for a single file, but it is consistent
-    clusters_data = find.clusters_data(params_general = params_general_baseline, path_output = path_output_baseline, nbclusters_forced = nbclusters_forced)
+    clusters_data = find.clusters_data2(params_general = params_general_baseline, 
+                                       path_output = path_output_baseline, 
+                                       nbclusters_forced = nbclusters_forced)
     
-    cat("\nFound", length(clusters_data),"clusters\n")
+    cat("\nFound", length(clusters_data), "clusters\n")
     outlines_input = vect(file.path(params_general_baseline$path_data, "outlines_input.shp"))
+    
+    if(is.voidstring(params_general_baseline$path_lastools))
+    { 
+      path_02_input = paste0(dir_dataset, "../02_input")
+      if(!dir.exists(path_02_input)) dir.create(path_02_input, recursive = TRUE)
+      for (i in seq_along(clusters_data)){
+        path_02_input_cluster = paste0(path_02_input, "/part_", i)
+        if(!dir.exists(path_02_input_cluster)) dir.create(path_02_input_cluster, recursive = TRUE)
+        file.copy(list.files(clusters_data[[i]]$path_data, full.names = TRUE), 
+                  path_02_input_cluster)
+      }
+    }
+    
+    # STOP IF 02.INPUT IS ONLY PRODUCED, START THE SKIP FEATURE ?
     
     nberrors = 0
     for(i in 1:length(clusters_data)){
       
       #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-      cat("\nPROCESSING CLUSTER",i,"\n")
+      cat("\nPROCESSING CLUSTER", i,"\n")
       #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-      
+
       time_start_current = Sys.time()
       
-      # we iteratively update params_general and create output folders
+      # we iteratively update params_general and create output folders 
+      # OPEN SOURCE VERSION: ADDED CLUSTER PATH PARAMETER 02_input
       params_general = clusters_data[[i]]
+      path_02_input_cluster = list.dirs(path_02_input)[-1][[i]]
+      params_general$path_02_input_cluster = path_02_input_cluster
+      
       path_output = path_output_baseline
-      if(length(clusters_data) > 1) path_output = file.path(path_output,basename(params_general$path_data))
+      if(length(clusters_data) > 1){
+        path_output = file.path(path_output, 
+                                basename(path_02_input_cluster))
+      }
       if(!dir.exists(path_output)) dir.create(path_output, recursive = TRUE)
       
-      step_processing = paste0("start cluster ",i)
+      paths = make.paths(
+        path_input = path_02_input_cluster,
+        path_output = path_output, 
+        format = "geotrees")
+      
+      step_processing = paste0("start cluster ", i)
       
       tryCatch({
         
         # compute a few statistics
-        files_toprocess = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
+        files_toprocess = list.files(params_general$path_02_input_cluster, 
+                                     pattern = paste0(".",params_general$type_file), 
+                                     full.names = T)
         n_files = length(files_toprocess)
         size_byte_input = sum(file.info(files_toprocess)$size)
-        size_KB_input = round(size_byte_input/(1024),2)
-        size_MB_input = round(size_byte_input/(1024*1024),2)
+        size_KB_input = round(size_byte_input/(1024), 2)
+        size_MB_input = round(size_byte_input/(1024*1024), 2)
         
         # process
         if(size_KB_input >= 10){
@@ -4732,7 +4910,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             
             # GEOTREES QUALITY ASSESSMENT RASTERS
             cat("\nOpen source version\n")
-            f.rasters_initial(path_02_input = params_general$path_data,
+            f.rasters_initial(path_02_input = params_general$path_02_input_cluster,
                               path_dtm_provider = paths$path_dtm_provider,
                               path_classification_provider = paths$path_classification_provider,
                               path_quality_scan = paths$path_quality_scan_initial,
@@ -4760,7 +4938,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           # ctg = lidR::readALScatalog(ctg_path)
           # 
           # catalog_apply(ctg, remove_hoverhangs_ground_points())
-          
+
           if(!is.voidstring(params_general$path_lastools))
           {
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -4867,10 +5045,10 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             # REALLY NEED THIS ?
             path_output_denoising = file.path(params_general$path_data, "lasnoise")
             if(!dir.exists(path_output_denoising)) dir.create(path_output_denoising)
-            output_filename <- file.path(path_output_denoising, "*.laz")
+            # output_filename <- file.path(path_output_denoising, "*.laz")
             
-            files <- list.files(file.path.system(type_os = params_general$type_os, params_general$path_data), 
-                                pattern = "*.laz$", full.names = TRUE)
+            # files <- list.files(file.path.system(type_os = params_general$type_os, params_general$path_data), 
+            #                     pattern = "*.laz$", full.names = TRUE)
             
             # THESE PARAMETERS SHOULD BE STORED IN PARAMS_GENERAL
             # step_noise = 4
@@ -5055,15 +5233,15 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           #   file.remove(files_pulsedensity_scanangle)
           # }
           # 
-          browser()
-          browser()
-          
           f.rasters_initial(input_pipeline = params_general$open_pipeline, 
-                            paths$path_02_input,
+                            params_general$path_02_input_cluster,
                             paths$path_dtm,
                             paths$path_classification,
                             paths$path_quality_scan,
                             opt_cores = params_general$n_cores)
+
+          browser()
+          browser()
           
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nDTM creation with las2dem / blast2dem\n")
@@ -6302,13 +6480,9 @@ f.quality_scan = function(path_quality_scan,
 make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
   
   format = match.arg(format)
-  
   if(format == "geotrees"){
-    
     # directory structure; these can be renamed, as long as they stay in this order
     dir_output_list = c(
-      paste0(path_input, "./02_input"),
-      
       paste0(path_output, "/_L1"),
       paste0(path_output, "/_L2"),
       paste0(path_output, "/_L3"),
@@ -6330,9 +6504,6 @@ make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
       "path_outline_localCRS"    = paste0(path_output, "/outline_localCRS.gpkg"),
       "path_outline_WGS84"       = paste0(path_output, "/outline_WGS84.gpkg"),
       
-      # input pointclouds
-      "path_02_input"            = paste0(path_input, "./02_input"),
-      
       # L1: point clouds
       "path_INFO_L1"             = paste0(dir_output_list[1], "/_INFO_L1.txt"),
       "path_L1_tiles"            = paste0(dir_output_list[5]),
@@ -6346,7 +6517,7 @@ make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
       "path_dsm_tin"             = paste0(dir_output_list[2], "/dsm_tin.tif"),
       "path_dsm_lspikefree"      = paste0(dir_output_list[2], "/dsm_lspikefree.tif"),
       "path_dtm"                 = paste0(dir_output_list[2], "/dtm.tif"),
-      "path_quality_scan_initial"    = paste0(dir_output_list[2], "/quality_scan_initial.tif"),
+      "path_quality_scan_initial"= paste0(dir_output_list[2], "/quality_scan_initial.tif"),
       "path_quality_scan"        = paste0(dir_output_list[2], "/quality_scan.tif"),
       "path_quality_ground"      = paste0(dir_output_list[2], "/quality_ground.tif"),
       "path_masks"               = paste0(dir_output_list[2], "/masks.tif"),
@@ -6379,66 +6550,64 @@ make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
       "path_metrics_terrain_50m"      = paste0(dir_output_list[10], "/metrics_terrain_50m.tif"),
       "path_metrics_terrain_100m"     = paste0(dir_output_list[10], "/metrics_terrain_100m.tif"),
       "path_metrics_terrain_quadrats" = paste0(dir_output_list[10], "/metrics_terrain_quadrats.gpkg")
-    )
-    
-  } else {
-    
-    # for the GCA outputs, put all outputs in the same directory
-    # construct paths
-    paths = list(
-      # output root
-      "path_INFO"                = paste0(path_output, "/_INFO.txt"),
-      "path_summary"             = paste0(path_output, "/summary.csv"),
-      "path_outline_localCRS"    = paste0(path_output, "/outline_localCRS.gpkg"),
-      "path_outline_WGS84"       = paste0(path_output, "/outline_WGS84.gpkg"),
-      
-      # L1: point clouds
-      "path_INFO_L1"             = paste0(path_output, "/_INFO_L1.txt"),
-
-      # L2: rasters
-      "path_INFO_L2"             = paste0(path_output, "/_INFO_L2.txt"),
-      "path_chm_highest"         = paste0(path_output, "/chm_highest.tif"),
-      "path_chm_tin"             = paste0(path_output, "/chm_tin.tif"),
-      "path_chm_lspikefree"      = paste0(path_output, "/chm_lspikefree.tif"),
-      "path_dsm_highest"         = paste0(path_output, "/dsm_highest.tif"),
-      "path_dsm_tin"             = paste0(path_output, "/dsm_tin.tif"),
-      "path_dsm_lspikefree"      = paste0(path_output, "/dsm_lspikefree.tif"),
-      "path_dtm"                 = paste0(path_output, "/dtm.tif"),
-      "path_quality_scan"        = paste0(path_output, "/quality_scan.tif"),
-      "path_quality_ground"      = paste0(path_output, "/quality_ground.tif"),
-      "path_masks"               = paste0(path_output, "/masks.tif"),
-      
-      # L3: derived canopy metrics
-      "path_INFO_L3"             = paste0(path_output, "/_INFO_L3.txt"),
-      "path_metrics_canopy_100m" = paste0(path_output, "/metrics_canopy_100m.tif"),
-      "path_metrics_canopy_50m"  = paste0(path_output, "/metrics_canopy_50m.tif"),
-      "path_metrics_canopy_25m"  = paste0(path_output, "/metrics_canopy_25m.tif"),
-      "path_outline_100m"        = paste0(path_output, "/outline_100m.gpkg"),
-      "path_outline_50m"         = paste0(path_output, "/outline_50m.gpkg"),
-      "path_outline_25m"         = paste0(path_output, "/outline_25m.gpkg"),
-      "path_metrics_canopy_quadrats_100m" = paste0(path_output, "/metrics_canopy_quadrats_100m.gpkg"),
-      "path_metrics_canopy_quadrats_50m"  = paste0(path_output, "/metrics_canopy_quadrats_50m.gpkg"),
-      "path_metrics_canopy_quadrats_25m"  = paste0(path_output, "/metrics_canopy_quadrats_25m.gpkg"),
-      
-      # custom/GCA
-      "path_classification_provider" = paste0(path_output, "/classification_provider.tif"),
-      "path_classification"          = paste0(path_output, "/classification.tif"),
-      "path_dtm_provider"            = paste0(path_output, "/dtm_provider.tif"),
-      
-      # custom/canopy
-      "path_metrics_canopy_test_25m"  = paste0(path_output, "/metrics_canopy_test_25m.tif"),
-      "path_metrics_canopy_test_50m"  = paste0(path_output, "/metrics_canopy_test_50m.tif"),
-      "path_metrics_canopy_test_100m" = paste0(path_output, "/metrics_canopy_test_100m.tif"),
-      
-      # custom/terrain
-      "path_terrain_5m"               = paste0(path_output, "/terrain_5m.tif"),
-      "path_metrics_terrain_25m"      = paste0(path_output, "/metrics_terrain_25m.tif"),
-      "path_metrics_terrain_50m"      = paste0(path_output, "/metrics_terrain_50m.tif"),
-      "path_metrics_terrain_100m"     = paste0(path_output, "/metrics_terrain_100m.tif"),
-      "path_metrics_terrain_quadrats" = paste0(path_output, "/metrics_terrain_quadrats.gpkg")
-    )
-    
-  }
+      )
+    } else {
+    #  ???????
+    # # for the GCA outputs, put all outputs in the same directory
+    # # construct paths
+    # paths = list(
+    #   # output root
+    #   "path_INFO"                = paste0(path_output, "/_INFO.txt"),
+    #   "path_summary"             = paste0(path_output, "/summary.csv"),
+    #   "path_outline_localCRS"    = paste0(path_output, "/outline_localCRS.gpkg"),
+    #   "path_outline_WGS84"       = paste0(path_output, "/outline_WGS84.gpkg"),
+    #   
+    #   # L1: point clouds
+    #   "path_INFO_L1"             = paste0(path_output, "/_INFO_L1.txt"),
+    # 
+    #   # L2: rasters
+    #   "path_INFO_L2"             = paste0(path_output, "/_INFO_L2.txt"),
+    #   "path_chm_highest"         = paste0(path_output, "/chm_highest.tif"),
+    #   "path_chm_tin"             = paste0(path_output, "/chm_tin.tif"),
+    #   "path_chm_lspikefree"      = paste0(path_output, "/chm_lspikefree.tif"),
+    #   "path_dsm_highest"         = paste0(path_output, "/dsm_highest.tif"),
+    #   "path_dsm_tin"             = paste0(path_output, "/dsm_tin.tif"),
+    #   "path_dsm_lspikefree"      = paste0(path_output, "/dsm_lspikefree.tif"),
+    #   "path_dtm"                 = paste0(path_output, "/dtm.tif"),
+    #   "path_quality_scan"        = paste0(path_output, "/quality_scan.tif"),
+    #   "path_quality_ground"      = paste0(path_output, "/quality_ground.tif"),
+    #   "path_masks"               = paste0(path_output, "/masks.tif"),
+    #   
+    #   # L3: derived canopy metrics
+    #   "path_INFO_L3"             = paste0(path_output, "/_INFO_L3.txt"),
+    #   "path_metrics_canopy_100m" = paste0(path_output, "/metrics_canopy_100m.tif"),
+    #   "path_metrics_canopy_50m"  = paste0(path_output, "/metrics_canopy_50m.tif"),
+    #   "path_metrics_canopy_25m"  = paste0(path_output, "/metrics_canopy_25m.tif"),
+    #   "path_outline_100m"        = paste0(path_output, "/outline_100m.gpkg"),
+    #   "path_outline_50m"         = paste0(path_output, "/outline_50m.gpkg"),
+    #   "path_outline_25m"         = paste0(path_output, "/outline_25m.gpkg"),
+    #   "path_metrics_canopy_quadrats_100m" = paste0(path_output, "/metrics_canopy_quadrats_100m.gpkg"),
+    #   "path_metrics_canopy_quadrats_50m"  = paste0(path_output, "/metrics_canopy_quadrats_50m.gpkg"),
+    #   "path_metrics_canopy_quadrats_25m"  = paste0(path_output, "/metrics_canopy_quadrats_25m.gpkg"),
+    #   
+    #   # custom/GCA
+    #   "path_classification_provider" = paste0(path_output, "/classification_provider.tif"),
+    #   "path_classification"          = paste0(path_output, "/classification.tif"),
+    #   "path_dtm_provider"            = paste0(path_output, "/dtm_provider.tif"),
+    #   
+    #   # custom/canopy
+    #   "path_metrics_canopy_test_25m"  = paste0(path_output, "/metrics_canopy_test_25m.tif"),
+    #   "path_metrics_canopy_test_50m"  = paste0(path_output, "/metrics_canopy_test_50m.tif"),
+    #   "path_metrics_canopy_test_100m" = paste0(path_output, "/metrics_canopy_test_100m.tif"),
+    #   
+    #   # custom/terrain
+    #   "path_terrain_5m"               = paste0(path_output, "/terrain_5m.tif"),
+    #   "path_metrics_terrain_25m"      = paste0(path_output, "/metrics_terrain_25m.tif"),
+    #   "path_metrics_terrain_50m"      = paste0(path_output, "/metrics_terrain_50m.tif"),
+    #   "path_metrics_terrain_100m"     = paste0(path_output, "/metrics_terrain_100m.tif"),
+    #   "path_metrics_terrain_quadrats" = paste0(path_output, "/metrics_terrain_quadrats.gpkg")
+    # )
+    }
   
   # normalize all paths (mustWork = FALSE because most files don't exist yet)
   paths = lapply(paths, normalizePath, winslash = "/", mustWork = FALSE)
