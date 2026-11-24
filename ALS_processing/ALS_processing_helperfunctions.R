@@ -3329,36 +3329,36 @@ make.dtm_nooverhangs = function(params_general, path_output = "", path_products 
     dtm_supplied = vrt(files_dtm_supplied); terra::crs(dtm_supplied) = crs_scan
     writeRaster(dtm_supplied, filename = file.path(path_products, paste0(name_raster,addendum_name,".tif")), overwrite = T)
   }
-  else
-  {
-    cat("\nGenerate dtm_nooverhangs open source called...\n")
-    tiles_pointcloud = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
-    
-    # TODO: replace with JR's
-    
-    ctg <- readLAScatalog(tiles_pointcloud)
-    opt_chunk_size(ctg) <- size_tile
-    opt_chunk_buffer(ctg) <- size_buffer
-    opt_progress(ctg) <- T
-    opt_output_files(ctg) <- file.path(params_general$path_data, paste0(name_raster, "/{ID}_dtm_nooverhangs"))
-    
-    future::plan(future.callr::callr, workers = params_general$n_cores)
-    
-    cat("lidR::rasterize_terrain()")
-    dtm <- rasterize_terrain(ctg, res = resolution, algorithm = tin())
-    dtm_tiles <- list.files(file.path(params_general$path_data, name_raster), pattern = "_dtm_nooverhangs\\.tif$", full.names = TRUE)
-    dtm = terra::vrt(dtm_tiles)
-    terra::writeRaster(dtm,
-                       filename = file.path(path_products, paste0(name_raster, ".tif")),
-                       overwrite = TRUE)
-    
-    future::plan(future::sequential)
-    if(params_general$cleanup == T) file.remove(dtm_tiles)
-    
-    #params_general$path_data = path_output
-    params_general$type_file = "laz"
-    cat("\nGenerate dtm_nooverhangs open source done!\n")
-  }
+  # else
+  # {
+  #   cat("\nGenerate dtm_nooverhangs open source called...\n")
+  #   tiles_pointcloud = list.files(params_general$path_data, pattern = paste0(".",params_general$type_file), full.names = T)
+  #   
+  #   # TODO: replace with JR's
+  #   
+  #   ctg <- readLAScatalog(tiles_pointcloud)
+  #   opt_chunk_size(ctg) <- size_tile
+  #   opt_chunk_buffer(ctg) <- size_buffer
+  #   opt_progress(ctg) <- T
+  #   opt_output_files(ctg) <- file.path(params_general$path_data, paste0(name_raster, "/{ID}_dtm_nooverhangs"))
+  #   
+  #   future::plan(future.callr::callr, workers = params_general$n_cores)
+  #   
+  #   cat("lidR::rasterize_terrain()")
+  #   dtm <- rasterize_terrain(ctg, res = resolution, algorithm = tin())
+  #   dtm_tiles <- list.files(file.path(params_general$path_data, name_raster), pattern = "_dtm_nooverhangs\\.tif$", full.names = TRUE)
+  #   dtm = terra::vrt(dtm_tiles)
+  #   terra::writeRaster(dtm,
+  #                      filename = file.path(path_products, paste0(name_raster, ".tif")),
+  #                      overwrite = TRUE)
+  #   
+  #   future::plan(future::sequential)
+  #   if(params_general$cleanup == T) file.remove(dtm_tiles)
+  #   
+  #   #params_general$path_data = path_output
+  #   params_general$type_file = "laz"
+  #   cat("\nGenerate dtm_nooverhangs open source done!\n")
+  # }
   
   time_end = Sys.time()
   time_processing = difftime(time_end,time_start,units = "mins")
@@ -3447,6 +3447,8 @@ make.dtm_custom = function(params_general, path_output = "", name_raster, kill =
   las2dem(params_general = params_general, path_output = path_output, name_raster = "dtm", kill = 200, step = step, type_output = "tif", option = "dtm")
   time_end = Sys.time()
   time_processing = difftime(time_end,time_start,units = "mins")
+  
+  
   
   cat("\nGenerate make.dtm_custom open source done!\n")
   
@@ -4907,7 +4909,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           }
           else
           {
-            
+
             # GEOTREES QUALITY ASSESSMENT RASTERS
             cat("\nOpen source version\n")
             f.rasters_initial(path_02_input = params_general$path_02_input_cluster,
@@ -5097,9 +5099,12 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             step_processing = paste0("reclassify")
             cat("\nGround classification\n")
             start_time = Sys.time()
-            params_general = lasground_new(params_general = params_general, path_output = "", update.path = TRUE, arguments_additional = "")
+            params_general = lasground_new(params_general = params_general, 
+                                           path_output = "", 
+                                           update.path = TRUE, 
+                                           arguments_additional = "")
             end_time = Sys.time()
-            time_ground_basic = as.numeric(difftime(end_time,start_time,units = "mins"))
+            time_ground_basic = as.numeric(difftime(end_time, start_time, units = "mins"))
             
             if(!is.voidstring(params_general$path_lastools))
             {
@@ -5107,9 +5112,11 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
               cat("\nRefinement of ground classification\n")
               step_processing = paste0("refine ground classification")
               start_time = Sys.time()
-              params_general = refine.ground(params_general = params_general, path_output = "",update.path = T)
+              params_general = refine.ground(params_general = params_general, 
+                                             path_output = "",
+                                             update.path = T)
               end_time = Sys.time()
-              time_ground_refinement = as.numeric(difftime(end_time,start_time,units = "mins"))
+              time_ground_refinement = as.numeric(difftime(end_time, start_time, units = "mins"))
             }
           }
 
@@ -5118,190 +5125,204 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             cat("\nDrop canopy heights above",height_lim,"\n")
             params_general = filter.height(params_general = params_general, 
                                            path_output = paths$path_L1_tiles, 
-                                           height_lim = height_lim, update.path = TRUE)
+                                           height_lim = height_lim, 
+                                           update.path = TRUE)
           }
           
-          # SKIP QUALITY RASTERS - TO DO - TO CHECK
-          # 
-          # #%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          # cat("\nGet summary stats\n")
-          # #%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          # 
-          # lasinfo(params_general = params_general)
-          # load(file.path(params_general$path_data,"summary_bytile.RData"))
-          # load(file.path(params_general$path_data,"summary_full.RData"))
-          # 
-          # # add infos on ground classification
-          # summary_full$time_ground_basic = time_ground_basic
-          # summary_full$time_ground_refinement = time_ground_refinement
-          # 
-          # #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          # cat("\nGet pulse density and scan angle\n")
-          # #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          # 
-          # scan_angle_field = get.scan_angle_field(
-          #   path_data  = params_general$path_data, 
-          #   type_file  = params_general$type_file
-          # )
-          # 
-          # step_processing = paste0("get pulsedensity rasters")
-          # get.pulsedensity(params_general = params_general, path_output = "", step = resolution, scan_angle_field = scan_angle_field)
-          # 
-          # files_pulsedensity_firstlast = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"),
-          #                                                   pattern = "pulsedensity_[0-9]+\\.tif$", full.names = TRUE)
-          # # using the virtual raster method from terra package
-          # pulsedensity_firstlast = vrt(files_pulsedensity_firstlast)
-          # names(pulsedensity_firstlast) = c("first","last")
-          # terra::crs(pulsedensity_firstlast) = crs_scan
-          # writeRaster(pulsedensity_firstlast, filename = file.path(path_output,paste0("pulsedensity_firstlast",addendum_name,".tif")), overwrite = T)
-          # 
-          # files_pulsedensity_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"),
-          #                                                   pattern = "pulsedensity_scan_angle[0-9]+\\.tif$", full.names = TRUE)
-          # # using the virtual raster method from terra package
-          # pulsedensity_scanangle = vrt(files_pulsedensity_scanangle)
-          # terra::crs(pulsedensity_scanangle) = crs_scan
-          # writeRaster(pulsedensity_scanangle, filename = file.path(path_output,paste0("pulsedensity_scanangle",addendum_name,".tif")), overwrite = T)
-          # 
-          # # create a pulse density mask (smooth within a radius of 5m)
-          # # use median smoothing, so that a single pixel with high pulse density does not unduly influence the smoothed pulse
-          # pulsedensity_first = terra::subset(pulsedensity_firstlast, "first")
-          # pulsedensity_nona = ifel(!is.na(pulsedensity_first), pulsedensity_first, 0)
-          # pulsedensity_smoothed = terra::focal(pulsedensity_nona, w = 11, fun = "median", na.rm = T)
-          # mask_pd02 = clamp(pulsedensity_smoothed, lower = 2, values = F)
-          # mask_pd02 = clamp(mask_pd02, upper = 1, values = T)
-          # mask_pd04 = clamp(pulsedensity_smoothed, lower = 4, values = F)
-          # mask_pd04 = clamp(mask_pd04, upper = 1, values = T)
-          # 
-          # writeRaster(mask_pd02, filename = file.path(path_output,paste0("mask_pd02",addendum_name,".tif")), overwrite = T)
-          # writeRaster(mask_pd04, filename = file.path(path_output,paste0("mask_pd04",addendum_name,".tif")), overwrite = T)
-          # 
-          # # step_processing = paste0("get pulsedensity_scanangle rasters")
-          # 
-          # # # pulse density rasters, filtering for scan angles
-          # # for(scanangle_abs_current in c(20)){
-          # #   get.pulsedensity(params_general = params_general,path_output = file.path(params_general$path_data,"pulsedensity",paste0("pulsedensity",scanangle_abs_current)), step = resolution, scanangle_abs_max = scanangle_abs_current)
-          # #
-          # #   files_pulsedensity_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity",paste0("pulsedensity",scanangle_abs_current)), pattern = ".tif", full.names = TRUE)
-          # #   # using the virtual raster method from terra package
-          # #   pulsedensity_scanangle = vrt(files_pulsedensity_scanangle)
-          # #   terra::crs(pulsedensity_scanangle) = crs_scan
-          # #   writeRaster(pulsedensity_scanangle, filename = file.path(path_output,paste0("pulsedensity_scanangle",scanangle_abs_current,addendum_name,".tif")), overwrite = T)
-          # #   unlink(x = file.path(path_output,paste0("pulsedensity",scanangle_abs_current)), recursive = T) # not needed for further processing
-          # #
-          # # }
-          # 
-          # step_processing = paste0("get pulsedensity_lastreturn rasters")
-          # # pulse density, based on last returns
-          # # get.pulsedensity(params_general = params_general,path_output = file.path(params_general$path_data,"pulsedensity","pulsedensity_lastreturn"), step = resolution, keep_first = F)
-          # # files_pulsedensity_lastreturn = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity","pulsedensity_lastreturn"), pattern = ".tif", full.names = TRUE)
-          # # using the virtual raster method from terra package
-          # pulsedensity_last = terra::subset(pulsedensity_firstlast, "last")
-          # # pulsedensity_lastreturn = vrt(pulsedensity_last)
-          # terra::crs(pulsedensity_last) = crs_scan
-          # writeRaster(pulsedensity_last, filename = file.path(path_output,paste0("pulsedensity_lastreturn",addendum_name,".tif")), overwrite = T)
-          # unlink(x = file.path(path_output,"pulsedensity_lastreturn"), recursive = T) # not needed for further processing
-          # 
-          # step_processing = paste0("get scanangle_abs rasters")
-          # # same for scan angle
-          # # special tryCatch condition, in case there are problems with the scan angle field
-          # angle99th = NULL
-          # status = tryCatch(
-          #   {
-          #     get.scanangle_abs(params_general = params_general,path_output = "", step = resolution, scan_angle_field = scan_angle_field)
-          # 
-          #     files_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"scanangle_abs"), pattern = "\\.tif", full.names = TRUE)
-          # 
-          #     scanangle = vrt(files_scanangle);
-          #     terra::crs(scanangle) = crs_scan
-          #     #scanangle = ifel(is.na(scanangle) & !is.na(pulsedensity), 0, scanangle) # scanangles below a certain threshold seem to be returned without angle information by LAStools, so fill those up (theoretically, the pulse density raster does not capture all filled pixels, only last returns, but that should give a pretty good picture anyways)
-          # 
-          #     angle99th = round(as.numeric(global(scanangle,quantile,probs = 0.99,na.rm = T)),2)
-          # 
-          #     writeRaster(scanangle, filename = file.path(path_output,paste0("scanangle_abs",addendum_name,".tif")), overwrite = T)
-          # 
-          #     if (params_general$cleanup == T) file.remove(files_scanangle)
-          # 
-          #   }
-          #   , error = function(e){
-          #     return("WARNING! Scan angle could not be obtained\n")
-          #   }
-          # 
-          # )
-          # 
-          # if (params_general$cleanup == T) {
-          #   file.remove(files_pulsedensity_firstlast)
-          #   file.remove(files_pulsedensity_scanangle)
-          # }
-          # 
-          f.rasters_initial(input_pipeline = params_general$open_pipeline, 
-                            params_general$path_02_input_cluster,
-                            paths$path_dtm,
-                            paths$path_classification,
-                            paths$path_quality_scan,
-                            opt_cores = params_general$n_cores)
+          #%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          cat("\nGet summary stats -- classify pipeline + rasters.initial in Open Source\n")
+          #%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            lasinfo(params_general = params_general)
+            load(file.path(params_general$path_data,"summary_bytile.RData"))
+            load(file.path(params_general$path_data,"summary_full.RData"))
+  
+            # add infos on ground classification
+            summary_full$time_ground_basic = time_ground_basic
+            summary_full$time_ground_refinement = time_ground_refinement
+  
+            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+            cat("\nGet pulse density and scan angle\n")
+            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+  
+            scan_angle_field = get.scan_angle_field(
+              path_data  = params_general$path_data,
+              type_file  = params_general$type_file
+            )
+  
+            step_processing = paste0("get pulsedensity rasters")
+            get.pulsedensity(params_general = params_general, 
+                             path_output = "", 
+                             step = resolution, 
+                             scan_angle_field = scan_angle_field)
+  
+            files_pulsedensity_firstlast = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"), pattern = "pulsedensity_[0-9]+\\.tif$", full.names = TRUE)
+            # using the virtual raster method from terra package
+            pulsedensity_firstlast = vrt(files_pulsedensity_firstlast)
+            names(pulsedensity_firstlast) = c("first","last")
+            terra::crs(pulsedensity_firstlast) = crs_scan
+            writeRaster(pulsedensity_firstlast, filename = file.path(path_output,paste0("pulsedensity_firstlast", addendum_name,".tif")), overwrite = T)
+  
+            files_pulsedensity_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity"), pattern = "pulsedensity_scan_angle[0-9]+\\.tif$", full.names = TRUE)
+            # using the virtual raster method from terra package
+            pulsedensity_scanangle = vrt(files_pulsedensity_scanangle)
+            terra::crs(pulsedensity_scanangle) = crs_scan
+            writeRaster(pulsedensity_scanangle, filename = file.path(path_output, paste0("pulsedensity_scanangle",addendum_name,".tif")), overwrite = T)
+  
+            # create a pulse density mask (smooth within a radius of 5m)
+            # use median smoothing, so that a single pixel with high pulse density does not unduly influence the smoothed pulse
+            pulsedensity_first = terra::subset(pulsedensity_firstlast, "first")
+            pulsedensity_nona = ifel(!is.na(pulsedensity_first), pulsedensity_first, 0)
+            pulsedensity_smoothed = terra::focal(pulsedensity_nona, w = 11, fun = "median", na.rm = T)
+            mask_pd02 = clamp(pulsedensity_smoothed, lower = 2, values = F)
+            mask_pd02 = clamp(mask_pd02, upper = 1, values = T)
+            mask_pd04 = clamp(pulsedensity_smoothed, lower = 4, values = F)
+            mask_pd04 = clamp(mask_pd04, upper = 1, values = T)
+  
+            writeRaster(mask_pd02, filename = file.path(path_output, paste0("mask_pd02", addendum_name,".tif")), overwrite = T)
+            writeRaster(mask_pd04, filename = file.path(path_output, paste0("mask_pd04", addendum_name,".tif")), overwrite = T)
+  
+            # step_processing = paste0("get pulsedensity_scanangle rasters")
+  
+            # # pulse density rasters, filtering for scan angles
+            # for(scanangle_abs_current in c(20)){
+            #   get.pulsedensity(params_general = params_general,path_output = file.path(params_general$path_data,"pulsedensity",paste0("pulsedensity",scanangle_abs_current)), step = resolution, scanangle_abs_max = scanangle_abs_current)
+            #
+            #   files_pulsedensity_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity",paste0("pulsedensity",scanangle_abs_current)), pattern = ".tif", full.names = TRUE)
+            #   # using the virtual raster method from terra package
+            #   pulsedensity_scanangle = vrt(files_pulsedensity_scanangle)
+            #   terra::crs(pulsedensity_scanangle) = crs_scan
+            #   writeRaster(pulsedensity_scanangle, filename = file.path(path_output,paste0("pulsedensity_scanangle",scanangle_abs_current,addendum_name,".tif")), overwrite = T)
+            #   unlink(x = file.path(path_output,paste0("pulsedensity",scanangle_abs_current)), recursive = T) # not needed for further processing
+            #
+            # }
+  
+            step_processing = paste0("get pulsedensity_lastreturn rasters")
+            # pulse density, based on last returns
+            # get.pulsedensity(params_general = params_general,path_output = file.path(params_general$path_data,"pulsedensity","pulsedensity_lastreturn"), step = resolution, keep_first = F)
+            # files_pulsedensity_lastreturn = list.files.nonzero(path = file.path(params_general$path_data,"pulsedensity","pulsedensity_lastreturn"), pattern = ".tif", full.names = TRUE)
+            # using the virtual raster method from terra package
+            pulsedensity_last = terra::subset(pulsedensity_firstlast, "last")
+            # pulsedensity_lastreturn = vrt(pulsedensity_last)
+            terra::crs(pulsedensity_last) = crs_scan
+            writeRaster(pulsedensity_last, filename = file.path(path_output,paste0("pulsedensity_lastreturn",addendum_name,".tif")), overwrite = T)
+            unlink(x = file.path(path_output,"pulsedensity_lastreturn"), recursive = T) # not needed for further processing
+  
+            step_processing = paste0("get scanangle_abs rasters")
+            # same for scan angle
+            # special tryCatch condition, in case there are problems with the scan angle field
+            angle99th = NULL
+            status = tryCatch(
+              {
+                get.scanangle_abs(params_general = params_general,path_output = "", step = resolution, scan_angle_field = scan_angle_field)
+  
+                files_scanangle = list.files.nonzero(path = file.path(params_general$path_data,"scanangle_abs"), pattern = "\\.tif", full.names = TRUE)
+  
+                scanangle = vrt(files_scanangle);
+                terra::crs(scanangle) = crs_scan
+                #scanangle = ifel(is.na(scanangle) & !is.na(pulsedensity), 0, scanangle) # scanangles below a certain threshold seem to be returned without angle information by LAStools, so fill those up (theoretically, the pulse density raster does not capture all filled pixels, only last returns, but that should give a pretty good picture anyways)
+  
+                angle99th = round(as.numeric(global(scanangle,quantile,probs = 0.99,na.rm = T)),2)
+  
+                writeRaster(scanangle, filename = file.path(path_output,paste0("scanangle_abs",addendum_name,".tif")), overwrite = T)
+  
+                if (params_general$cleanup == T) file.remove(files_scanangle)
+  
+              }
+              , error = function(e){
+                return("WARNING! Scan angle could not be obtained\n")
+              }
+            )
+  
+            if (params_general$cleanup == T) {
+              file.remove(files_pulsedensity_firstlast)
+              file.remove(files_pulsedensity_scanangle)
+            }
+          }
+          else{
+            f.rasters_initial(input_pipeline = params_general$open_pipeline, 
+                              params_general$path_02_input_cluster,
+                              paths$path_dtm,
+                              paths$path_classification,
+                              paths$path_quality_scan,
+                              opt_cores = params_general$n_cores)
+          }
 
-          browser()
-          browser()
-          
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nDTM creation with las2dem / blast2dem\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          
           # create default dtm
           step_processing = paste0("create DTMs")
-          
-          time_dtm_lasdef = las2dem(params_general = params_general, path_output = "", name_raster = "dtm_lasdef", kill = 200, step = resolution, type_output = "tif", option = "dtm")
-          summary_full$time_dtm_lasdef = time_dtm_lasdef
-          
-          path_dtm_lasdef = file.path(params_general$path_data,"dtm_lasdef")
-          files_dtm_lasdef = list.files.nonzero(path = path_dtm_lasdef, pattern = ".tif", full.names = TRUE)
-          dtm_lasdef = vrt(files_dtm_lasdef)
-          terra::crs(dtm_lasdef) = crs_scan
-          
-          if(ext(pulsedensity_first) != ext(dtm_lasdef)){
-            cat("Warning! DTM extent is off and will be adjusted!\n")
-            dtm_lasdef = crop(extend(dtm_lasdef, pulsedensity_first), pulsedensity_first)
+          # Make default DTM -- Skipped in Open Source because already produced by rasters_initial()
+          if(!is.voidstring(params_general$path_lastools))
+          {
+              time_dtm_lasdef = las2dem(params_general = params_general, path_output = "", name_raster = "dtm_lasdef", kill = 200, step = resolution, type_output = "tif", option = "dtm")
+              summary_full$time_dtm_lasdef = time_dtm_lasdef
+              
+              path_dtm_lasdef = file.path(params_general$path_data,"dtm_lasdef")
+              files_dtm_lasdef = list.files.nonzero(path = path_dtm_lasdef, pattern = ".tif", full.names = TRUE)
+              dtm_lasdef = vrt(files_dtm_lasdef)
+              terra::crs(dtm_lasdef) = crs_scan
+              
+              if(ext(pulsedensity_first) != ext(dtm_lasdef)){
+                cat("Warning! DTM extent is off and will be adjusted!\n")
+                dtm_lasdef = crop(extend(dtm_lasdef, pulsedensity_first), pulsedensity_first)
+              }
+              
+              writeRaster(dtm_lasdef, filename = file.path(path_output,paste0("dtm_lasdef",addendum_name,".tif")), overwrite = T)
+            # create refined dtm, which will become the actual dtm
+            # this should be identical to dtm_lasdef in most cases
+            # time_dtm_refined = las2dem(params_general = params_general, path_output = "", name_raster = "dtm_refined", kill = 200, step = resolution, type_output = "tif", option = "dtm_refined")
+            
+            time_dtm = make.dtm_nooverhangs(params_general = params_general, path_output = "", path_products = path_output, name_raster = "dtm", kill = 200, step = resolution, type_output = "tif",classes_ground = "2 8",threshold_drop = 10)
+            summary_full$time_dtm = time_dtm
+            
+            path_dtm = file.path(path_output, "dtm.tif")
+            files_dtm = list.files.nonzero(path = path_dtm, pattern = ".tif", full.names = TRUE)
+            dtm = vrt(files_dtm_lasdef) # ???? WHY files_dtm_lasdef ????
+            terra::crs(dtm) = crs_scan
           }
-          
-          writeRaster(dtm_lasdef, filename = file.path(path_output,paste0("dtm_lasdef",addendum_name,".tif")), overwrite = T)
-          
-          # create refined dtm, which will become the actual dtm
-          # this should be identical to dtm_lasdef in most cases
-          # time_dtm_refined = las2dem(params_general = params_general, path_output = "", name_raster = "dtm_refined", kill = 200, step = resolution, type_output = "tif", option = "dtm_refined")
-          
-          time_dtm = make.dtm_nooverhangs(params_general = params_general, path_output = "", path_products = path_output, name_raster = "dtm", kill = 200, step = resolution, type_output = "tif",classes_ground = "2 8",threshold_drop = 10)
-          summary_full$time_dtm = time_dtm
-          
-          path_dtm = file.path(path_output,"dtm.tif")
-          
-          files_dtm = list.files.nonzero(path = path_dtm, pattern = ".tif", full.names = TRUE)
-          dtm = vrt(files_dtm_lasdef) # ???? WHY files_dtm_lasdef ????
-          terra::crs(dtm) = crs_scan
-          
-          cat("\nWrite dtm masks\n")
+          else
+          {
+            dtm = terra::rast(paths$path_dtm)
+            quality_scan = terra::rast(paths$path_quality_scan)
+            
+            mask_pd02 = clamp(quality_scan$d_1st, lower = 2, values = F)
+            mask_pd02 = clamp(mask_pd02, upper = 1, values = T)
+            
+            mask_pd04 = clamp(quality_scan$d_1st, lower = 4, values = F)
+            mask_pd04 = clamp(mask_pd02, upper = 1, values = T)
+          }
+      
           # now define pulse density percentages with respect to dtm
           perc_pd02 = 100 * max(0, as.numeric(global(dtm,"notNA") - global(mask_pd02,"notNA")))/as.numeric(global(dtm,"notNA"))
           perc_pd04 = 100 * max(0, as.numeric(global(dtm,"notNA") - global(mask_pd04,"notNA")))/as.numeric(global(dtm,"notNA"))
           
-          # Correct dtm dimensions
-          dtm <- crop(dtm, dtm_lasdef)
-          dtm_lasdef <- crop(dtm_lasdef, dtm)
-          
-          # now write out rasters depending on whether there is actually any improvement
-          diff_refinement = dtm - dtm_lasdef
-          mat_circular = terra::focalMat(diff_refinement, 10, type = "circle") # draw a 10 circle around each point
-          mat_circular[mat_circular != 0] = 1
-          diff_refinement_smoothed = terra::focal(diff_refinement, w=mat_circular, fun="mean", na.rm=T)
-          mask_steep = ifel(diff_refinement_smoothed > -0.5 & diff_refinement_smoothed < 0.5, 1, NA)
-          writeRaster(mask_steep, filename = file.path(path_output,paste0("mask_steep",addendum_name,".tif")), overwrite = T)
-          
-          cat("\nWrite dtm masks done!\n")
-          
-          # get percentage of steep areas
-          perc_steep = 100 * max(0,as.numeric(global(diff_refinement_smoothed,"notNA") - global(mask_steep,"notNA")))/as.numeric(global(diff_refinement_smoothed,"notNA"))
-          
-          # read in again, not as vrt
-          dtm = rast(file.path(path_output,paste0("dtm",addendum_name,".tif")))
+          cat("\nWrite dtm masks -- NO OVERHANGING IN OPEN SOURCE, SKIPPED MASK_STEEP\n")
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            # Correct dtm dimensions
+            dtm <- crop(dtm, dtm_lasdef)
+            dtm_lasdef <- crop(dtm_lasdef, dtm)
+            
+            # now write out rasters depending on whether there is actually any improvement
+            diff_refinement = dtm - dtm_lasdef
+            mat_circular = terra::focalMat(diff_refinement, 10, type = "circle") # draw a 10 circle around each point
+            mat_circular[mat_circular != 0] = 1
+            diff_refinement_smoothed = terra::focal(diff_refinement, w=mat_circular, fun="mean", na.rm=T)
+            mask_steep = ifel(diff_refinement_smoothed > -0.5 & diff_refinement_smoothed < 0.5, 1, NA)
+            writeRaster(mask_steep, 
+                        filename = file.path(path_output, paste0("mask_steep", addendum_name, ".tif")), 
+                        overwrite = T)
+            
+            # get percentage of steep areas
+            perc_steep = 100 * max(0,as.numeric(global(diff_refinement_smoothed,"notNA") - global(mask_steep,"notNA")))/as.numeric(global(diff_refinement_smoothed, "notNA"))
+            
+            cat("\nWrite dtm masks done!\n")
+            # read in again, not as vrt
+            dtm = rast(file.path(path_output, paste0("dtm", addendum_name,".tif")))
+          }
           
           # create a mask
           outline_localCRS = clamp(dtm, lower = 1, upper = 1, values = T)
@@ -5315,102 +5336,108 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           # new in v.48
           
-          cat("\nCreating highest DTM layers\n")
-          # also add a layer with the basic ground points
-          make.dtm_highest(params_general = params_general,path_output = "", name_raster = "dtm_highest", type_output = "tif", step = resolution, subcircle = 1, classes = "2 8")
-          path_dtm_highest = file.path(params_general$path_data,"dtm_highest")
-          files_dtm_highest = list.files.nonzero(path = path_dtm_highest, pattern = ".tif", full.names = TRUE)
-          dtm_highest = vrt(files_dtm_highest); terra::crs(dtm_highest) = crs_scan
-          if(ext(pulsedensity_first) != ext(dtm_highest)){
-            cat("Warning! DTM extent is off and will be adjusted!\n")
-            dtm_highest = crop(extend(dtm_highest, pulsedensity_first), pulsedensity_first)
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            cat("\nCreating highest DTM layers\n")
+            # also add a layer with the basic ground points
+            make.dtm_highest(params_general = params_general,path_output = "", name_raster = "dtm_highest", type_output = "tif", step = resolution, subcircle = 1, classes = "2 8")
+            path_dtm_highest = file.path(params_general$path_data,"dtm_highest")
+            files_dtm_highest = list.files.nonzero(path = path_dtm_highest, pattern = ".tif", full.names = TRUE)
+            dtm_highest = vrt(files_dtm_highest); terra::crs(dtm_highest) = crs_scan
+            if(ext(pulsedensity_first) != ext(dtm_highest)){
+              cat("Warning! DTM extent is off and will be adjusted!\n")
+              dtm_highest = crop(extend(dtm_highest, pulsedensity_first), pulsedensity_first)
+            }
+  
+            writeRaster(dtm_highest, filename = file.path(path_output,paste0("dtm_highest",addendum_name,".tif")), overwrite = T)
+  
+            cat(paste0("Saved ", file.path(path_output,paste0("dtm_highest",addendum_name,".tif"))))
+            cat("\nhighest DTM layers OK\n")
+  
+            # now create a mask for NA values in the DTM
+            minradius_NA = 15
+            dtm_nona_agg = aggregate(ifel(is.na(dtm_highest), NA, 1), fact = 5, fun = "mean", na.rm = T)
+            mat_circular = focalMat(dtm_nona_agg, minradius_NA, type = "circle") # draw a circle around each point
+            mat_circular[mat_circular != 0] = 1
+            dtm_nona_agg = terra::focal(dtm_nona_agg, w = mat_circular, fun = "mean", na.rm = T)
+            mask_ground = terra::focal(ifel(is.na(dtm_nona_agg),1,NA), w = mat_circular, fun = "mean", na.rm = T)
+            mask_noground = ifel(is.na(mask_ground), 1, NA)
+            mask_noground = terra::resample(mask_noground, dtm_highest)
+            writeRaster(mask_noground, filename = file.path(path_output,paste0("mask_noground",addendum_name,".tif")), overwrite = T)
+            
+            # get percentage of areas with ground points
+            perc_nogrd = 100 * max(0,as.numeric(global(dtm,"notNA")-global(mask_noground,"notNA")))/as.numeric(global(dtm,"notNA"))
           }
-
-          writeRaster(dtm_highest, filename = file.path(path_output,paste0("dtm_highest",addendum_name,".tif")), overwrite = T)
-
-          cat(paste0("Saved ", file.path(path_output,paste0("dtm_highest",addendum_name,".tif"))))
-          cat("\nhighest DTM layers OK\n")
-
-          # now create a mask for NA values in the DTM
-          minradius_NA = 15
-          dtm_nona_agg = aggregate(ifel(is.na(dtm_highest),NA,1), fact = 5, fun = "mean", na.rm = T)
-          mat_circular = focalMat(dtm_nona_agg, minradius_NA, type = "circle") # draw a circle around each point
-          mat_circular[mat_circular != 0] = 1
-          dtm_nona_agg = terra::focal(dtm_nona_agg, w = mat_circular, fun = "mean", na.rm = T)
-          mask_ground = terra::focal(ifel(is.na(dtm_nona_agg),1,NA), w = mat_circular, fun = "mean", na.rm = T)
-          mask_noground = ifel(is.na(mask_ground), 1, NA)
-          mask_noground = terra::resample(mask_noground, dtm_highest)
-          writeRaster(mask_noground, filename = file.path(path_output,paste0("mask_noground",addendum_name,".tif")), overwrite = T)
-          
-          # get percentage of areas with ground points
-          perc_nogrd = 100 * max(0,as.numeric(global(dtm,"notNA")-global(mask_noground,"notNA")))/as.numeric(global(dtm,"notNA"))
           
           # Common settings
           # Default: step is 25 m, sub is 5, bulge is 2 m, spike is 1+1 m, and offset is 0.05 m
           # Nature: step is 5 m, sub is 3, bulge is 1 m, spike is 1+1 m, and offset is 0.05 m
           # extra_fine changes sub to 7, bulge should be 1/10th of step size, but is clamped to between 1 and 2 by default
           
-          dtms_custom = data.table(name = c("dtm_lasfine"), arguments_additional = c("-step 10 -bulge 1.0 -hyper_fine"))
-
-          for(i in 1:nrow(dtms_custom)){
-            name_dtm_custom = dtms_custom[i]$name
-            arguments_additional = dtms_custom[i]$arguments_additional
-            
-            cat("Creating",name_dtm_custom,"\n")
-            time_dtm_custom = make.dtm_custom(params_general = params_general, path_output = file.path(params_general$path_data,name_dtm_custom), name_raster = name_dtm_custom, kill = 200, step = resolution, arguments_additional = arguments_additional)
-            name_time = paste0("time_",name_dtm_custom)
-            summary_full[, (name_time) := time_dtm_custom]
-            
-            files_dtm_custom = list.files.nonzero(path = file.path(params_general$path_data,name_dtm_custom), pattern = ".tif", full.names = TRUE)
-            dtm_custom = vrt(files_dtm_custom); terra::crs(dtm_custom) = crs_scan
-            if(ext(pulsedensity_firstlast) != ext(dtm_custom)){
-              cat("Warning! DTM extent is off and will be adjusted!\n")
-              dtm_custom = crop(extend(dtm_custom,pulsedensity_firstlast),pulsedensity_firstlast)
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            dtms_custom = data.table(name = c("dtm_lasfine"), arguments_additional = c("-step 10 -bulge 1.0 -hyper_fine"))
+  
+            for(i in 1:nrow(dtms_custom)){
+              name_dtm_custom = dtms_custom[i]$name
+              arguments_additional = dtms_custom[i]$arguments_additional
+              
+              cat("Creating", name_dtm_custom,"\n")
+              time_dtm_custom = make.dtm_custom(params_general = params_general, path_output = file.path(params_general$path_data,name_dtm_custom), name_raster = name_dtm_custom, kill = 200, step = resolution, arguments_additional = arguments_additional)
+              name_time = paste0("time_",name_dtm_custom)
+              summary_full[, (name_time) := time_dtm_custom]
+              
+              files_dtm_custom = list.files.nonzero(path = file.path(params_general$path_data, name_dtm_custom), pattern = ".tif", full.names = TRUE)
+              dtm_custom = vrt(files_dtm_custom); terra::crs(dtm_custom) = crs_scan
+              if(ext(pulsedensity_firstlast) != ext(dtm_custom)){
+                cat("Warning! DTM extent is off and will be adjusted!\n")
+                dtm_custom = crop(extend(dtm_custom,pulsedensity_firstlast),pulsedensity_firstlast)
+              }
+              writeRaster(dtm_custom, filename = file.path(path_output,paste0(name_dtm_custom,addendum_name,".tif")), overwrite = T)
+              
+              files_chunks_lasfine = list.files.nonzero(path = file.path(params_general$path_data,name_dtm_custom), pattern = ".laz", full.names = TRUE)
+              files_chunk_lasfine_lax = list.files.nonzero(path = file.path(params_general$path_data,name_dtm_custom), pattern = ".lax", full.names = TRUE)
+              
+              if (params_general$cleanup == T) {
+                file.remove(files_chunks_lasfine)
+                file.remove(files_chunk_lasfine_lax)
+              }
             }
-            writeRaster(dtm_custom, filename = file.path(path_output,paste0(name_dtm_custom,addendum_name,".tif")), overwrite = T)
             
-            files_chunks_lasfine = list.files.nonzero(path = file.path(params_general$path_data,name_dtm_custom), pattern = ".laz", full.names = TRUE)
-            files_chunk_lasfine_lax = list.files.nonzero(path = file.path(params_general$path_data,name_dtm_custom), pattern = ".lax", full.names = TRUE)
+            # to create an index of dtm uncertainty, we use the difference between dtm_lasfine and dtm_lasdef
+            file_dtm_lasfine = file.path(path_output,paste0("dtm_lasfine",addendum_name,".tif"))
             
-            if (params_general$cleanup == T) {
-              file.remove(files_chunks_lasfine)
-              file.remove(files_chunk_lasfine_lax)
+            perc_undtm = as.numeric(NA)
+            
+            if(file.exists(file_dtm_lasfine)){
+              #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+              cat("\nCreate mask of DTM uncertainty \n")
+              #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+              
+              file_dtm_lasdef = file.path(path_output, paste0("dtm_lasdef",addendum_name,".tif"))
+              if(!file.exists(file_dtm_lasdef)){
+                file_dtm_lasdef = file.path(path_output, paste0("dtm",addendum_name,".tif"))
+              }
+              
+              dtm_lasdef = rast(file_dtm_lasdef)
+              dtm_lasfine = rast(file_dtm_lasfine)
+              
+              mat_circular = focalMat(dtm_lasdef, 10, type = "circle") # draw a 10 circle around each point
+              mat_circular[mat_circular != 0] = 1
+              dtm_lasdef_smoothed = terra::focal(dtm_lasdef, w = mat_circular, fun = "mean", na.rm = T)
+              dtm_lasfine_smoothed = terra::focal(dtm_lasfine, w = mat_circular, fun = "mean", na.rm = T)
+              
+              diff_dtms = dtm_lasfine_smoothed - dtm_lasdef_smoothed
+              
+              mask_unstabledtm = ifel(diff_dtms < 2 & diff_dtms > -2, 1, NA)
+              writeRaster(mask_unstabledtm, filename = file.path(path_output,paste0("x",addendum_name,".tif")), overwrite = T)
+              
+              perc_undtm = 100 * max(0, as.numeric(global(diff_dtms,"notNA") - global(mask_unstabledtm,"notNA")))/as.numeric(global(diff_dtms,"notNA"))
             }
+            
+            if (params_general$cleanup == T) file.remove(files_dtm_lasdef)
+            if (params_general$cleanup == T) file.remove(files_dtm)
           }
-          
-          # to create an index of dtm uncertainty, we use the difference between dtm_lasfine and dtm_lasdef
-          file_dtm_lasfine = file.path(path_output,paste0("dtm_lasfine",addendum_name,".tif"))
-          
-          perc_undtm = as.numeric(NA)
-          
-          if(file.exists(file_dtm_lasfine)){
-            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-            cat("\nCreate mask of DTM uncertainty \n")
-            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-            
-            file_dtm_lasdef = file.path(path_output, paste0("dtm_lasdef",addendum_name,".tif"))
-            if(!file.exists(file_dtm_lasdef)){
-              file_dtm_lasdef = file.path(path_output, paste0("dtm",addendum_name,".tif"))
-            }
-            
-            dtm_lasdef = rast(file_dtm_lasdef)
-            dtm_lasfine = rast(file_dtm_lasfine)
-            
-            mat_circular = focalMat(dtm_lasdef, 10, type = "circle") # draw a 10 circle around each point
-            mat_circular[mat_circular != 0] = 1
-            dtm_lasdef_smoothed = terra::focal(dtm_lasdef, w = mat_circular, fun = "mean", na.rm = T)
-            dtm_lasfine_smoothed = terra::focal(dtm_lasfine, w = mat_circular, fun = "mean", na.rm = T)
-            
-            diff_dtms = dtm_lasfine_smoothed - dtm_lasdef_smoothed
-            
-            mask_unstabledtm = ifel(diff_dtms < 2 & diff_dtms > -2,1,NA)
-            writeRaster(mask_unstabledtm, filename = file.path(path_output,paste0("mask_unstabledtm",addendum_name,".tif")), overwrite = T)
-            
-            perc_undtm = 100 * max(0, as.numeric(global(diff_dtms,"notNA") - global(mask_unstabledtm,"notNA")))/as.numeric(global(diff_dtms,"notNA"))
-          }
-          
-          if (params_general$cleanup == T) file.remove(files_dtm_lasdef)
-          if (params_general$cleanup == T) file.remove(files_dtm)
           
           #%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nDSM creation \n")
@@ -5421,22 +5448,46 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nCreating highest point-based DSM \n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          
-          time_dsm_highest = make.dsm_highest(params_general = params_general, path_output = file.path(params_general$path_data,"dsm_highest"), name_raster = "dsm_highest", type_output = "tif", step = resolution, subcircle = 0.1)
-          
-          summary_full$time_dsm_highest = time_dsm_highest
-          
-          files_dsm_highest = list.files.nonzero(path = file.path(params_general$path_data,"dsm_highest"), pattern = ".tif", full.names = TRUE)
-          dsm_highest = vrt(files_dsm_highest); terra::crs(dsm_highest) = crs_scan
-          if(ext(dsm_highest) != ext(dtm)){
-            cat("Warning! DSM extent is off and will be adjusted!\n")
-            dsm_highest = crop(extend(dsm_highest,dtm),dtm)
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            time_dsm_highest = make.dsm_highest(params_general = params_general, 
+                                                path_output = file.path(params_general$path_data,"dsm_highest"), 
+                                                name_raster = "dsm_highest", 
+                                                type_output = "tif", step = resolution, subcircle = 0.1)
+            
+            summary_full$time_dsm_highest = time_dsm_highest
+            
+            files_dsm_highest = list.files.nonzero(path = file.path(params_general$path_data,"dsm_highest"), 
+                                                   pattern = ".tif", full.names = TRUE)
+            dsm_highest = vrt(files_dsm_highest); terra::crs(dsm_highest) = crs_scan
+            if(ext(dsm_highest) != ext(dtm)){
+              cat("Warning! DSM extent is off and will be adjusted!\n")
+              dsm_highest = crop(extend(dsm_highest,dtm),dtm)
+            }
+            writeRaster(dsm_highest, 
+                        filename = file.path(path_output,paste0("dsm_highest",addendum_name,".tif")), 
+                        overwrite = T)
+            
+            chm_highest = dsm_highest - dtm; terra::crs(chm_highest) = crs_scan
+            chm_highest = clamp(chm_highest, lower = 0, values = T)
+            writeRaster(chm_highest, filename = file.path(path_output, 
+                                                          paste0("chm_highest", addendum_name,".tif")), 
+                        overwrite = T)
           }
-          writeRaster(dsm_highest, filename = file.path(path_output,paste0("dsm_highest",addendum_name,".tif")), overwrite = T)
-          
-          chm_highest = dsm_highest - dtm; terra::crs(chm_highest) = crs_scan
-          chm_highest = clamp(chm_highest, lower = 0, values = T)
-          writeRaster(chm_highest, filename = file.path(path_output,paste0("chm_highest",addendum_name,".tif")), overwrite = T)
+          else{
+            f.dsm(resolution = resolution,
+                  path_L1_tiles = paths$path_L1_tiles,
+                  path_dtm = paths$path_dtm,
+                  path_dsm_highest = paths$path_dsm_highest,
+                  path_dsm_tin = paths$path_dsm_tin,
+                  path_dsm_lspikefree = paths$path_dsm_lspikefree,
+                  path_chm_highest = paths$path_chm_highest,
+                  path_chm_tin = paths$path_chm_tin,
+                  path_chm_lspikefree = paths$path_chm_lspikefree,
+                  opt_cores = params_general$n_cores)
+            
+            chm_highest = terra::rast(paths$path_chm_highest)
+          }
           
           # calculate some sumstats
           chm_mean = as.numeric(global(chm_highest, "mean",na.rm = T))
@@ -5455,106 +5506,116 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           invmask_cloud = clamp(invmask_cloud, upper = 1, lower = 1, values = T)
           invmask_cloud = terra::focal(invmask_cloud, w = 11, fun = "median", na.rm = T)
           mask_cloud = ifel(is.na(invmask_cloud),1,NA)
-          writeRaster(mask_cloud, filename = file.path(path_output,paste0("mask_cloud",addendum_name,".tif")), overwrite = T)
-          
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            writeRaster(mask_cloud, 
+                        filename = file.path(path_output,paste0("mask_cloud",addendum_name,".tif")), 
+                        overwrite = T)
+          }
           # get percentage of cloudy areas
           perc_cloud = 100 * max(0, as.numeric(global(dtm,"notNA") - global(mask_cloud,"notNA")))/as.numeric(global(dtm,"notNA"))
           
-          if("tin" %in% types_dsm){
-            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-            cat("\nCreating TIN-based DSM \n")
-            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-            time_dsm_tin = las2dem(params_general = params_general, path_output = file.path(params_general$path_data,"dsm_tin"), name_raster = "dsm_tin", kill = 200, step = resolution, type_output = "tif", option = "dsm")
-            summary_full$time_dsm_tin = time_dsm_tin
-            
-            files_dsm_tin = list.files.nonzero(path = file.path(params_general$path_data,"dsm_tin"), pattern = ".tif", full.names = TRUE)
-            dsm_tin = vrt(files_dsm_tin); terra::crs(dsm_tin) = crs_scan
-            if(ext(dsm_tin) != ext(dtm)){
-              cat("Warning! DSM extent is off and will be adjusted!\n")
-              dsm_tin = crop(extend(dsm_tin,dtm),dtm)
-            }
-            
-            writeRaster(dsm_tin, filename = file.path(path_output,paste0("dsm_tin",addendum_name,".tif")), overwrite = T)
-            
-            chm_tin = dsm_tin - dtm; terra::crs(chm_tin) = crs_scan
-            chm_tin = clamp(chm_tin, lower = 0, values = T)
-            writeRaster(chm_tin, filename = file.path(path_output,paste0("chm_tin",addendum_name,".tif")), overwrite = T)
-          }
-          
-          if("spikefree" %in% types_dsm)
+          if(!is.voidstring(params_general$path_lastools))
           {
-            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-            cat("\nCreating Spikefree-based DSM \n")
-            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-            time_dsm_spikefree = las2dem(params_general = params_general, path_output = file.path(params_general$path_data,"dsm_spikefree"), name_raster = "dsm_spikefree", kill = 200, step = resolution, type_output = "tif", option = "dsm_spikefree")
-            summary_full$time_dsm_spikefree = time_dsm_spikefree
-            
-            files_dsm_spikefree = list.files.nonzero(path = file.path(params_general$path_data,"dsm_spikefree"), pattern = ".tif", full.names = TRUE)
-            dsm_spikefree = vrt(files_dsm_spikefree); terra::crs(dsm_spikefree) = crs_scan
-            if(ext(dsm_spikefree) != ext(dtm)){
-              cat("Warning! DSM extent is off and will be adjusted!\n")
-              dsm_spikefree = crop(extend(dsm_spikefree,dtm),dtm)
+            if("tin" %in% types_dsm){
+              #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+              cat("\nCreating TIN-based DSM \n")
+              #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+              time_dsm_tin = las2dem(params_general = params_general, 
+                                     path_output = file.path(params_general$path_data,"dsm_tin"), 
+                                     name_raster = "dsm_tin", kill = 200, step = resolution, type_output = "tif", option = "dsm")
+              summary_full$time_dsm_tin = time_dsm_tin
+              
+              files_dsm_tin = list.files.nonzero(path = file.path(params_general$path_data,"dsm_tin"), 
+                                                 pattern = ".tif", full.names = TRUE)
+              dsm_tin = vrt(files_dsm_tin); terra::crs(dsm_tin) = crs_scan
+              if(ext(dsm_tin) != ext(dtm)){
+                cat("Warning! DSM extent is off and will be adjusted!\n")
+                dsm_tin = crop(extend(dsm_tin,dtm),dtm)
+              }
+              
+              writeRaster(dsm_tin, 
+                          filename = file.path(path_output,paste0("dsm_tin",addendum_name,".tif")), 
+                          overwrite = T)
+              
+              chm_tin = dsm_tin - dtm; terra::crs(chm_tin) = crs_scan
+              chm_tin = clamp(chm_tin, lower = 0, values = T)
+              writeRaster(chm_tin, filename = file.path(path_output,paste0("chm_tin",addendum_name,".tif")), overwrite = T)
             }
             
-            writeRaster(dsm_spikefree, filename = file.path(path_output,paste0("dsm_spikefree",addendum_name,".tif")), overwrite = T)
-            
-            chm_spikefree = dsm_spikefree - dtm; terra::crs(chm_spikefree) = crs_scan
-            chm_spikefree = clamp(chm_spikefree, lower = 0, values = T)
-            writeRaster(chm_spikefree, filename = file.path(path_output,paste0("chm_spikefree",addendum_name,".tif")), overwrite = T)
-          }
-          
-          if("lspikefree" %in% types_dsm & nrow(params_dsmadaptive) > 0){
-            
-            
-            cat("LSPIKEFREE !")
-            for(id_param in 1:nrow(params_dsmadaptive)){
-              params_dsmadaptive_current = params_dsmadaptive[id_param]
-              name_dsm_lspikefree = as.character(NA)
-              if(nrow(params_dsmadaptive) == 1){
-                name_dsm_lspikefree = "dsm_lspikefree"
-              } else {
-                name_dsm_lspikefree = paste0("dsm_lspikefree_multi",
-                                             params_dsmadaptive_current$multi,
-                                             "_slope",
-                                             params_dsmadaptive_current$slope,
-                                             "_offset",
-                                             params_dsmadaptive_current$offset)
-                }
-                cat("Creating",name_dsm_lspikefree,"\n")
-                
-                time_dsm_lspikefree = make.dsm_locallyadaptive(params_general = params_general, 
-                                                               path_output = file.path(params_general$path_data,name_dsm_lspikefree), 
-                                                               name_raster = name_dsm_lspikefree, 
-                                                               kill = 200, 
-                                                               step = resolution, 
-                                                               option = "spikefree", 
-                                                               params_dsmadaptive = params_dsmadaptive_current, 
-                                                               normalize = F)
-
-                name_time = paste0("time_", name_dsm_lspikefree)
-                summary_full[, (name_time) := time_dsm_lspikefree]
-                
-                files_dsm_lspikefree = list.files.nonzero(path = file.path(params_general$path_data, name_dsm_lspikefree), 
-                                                          pattern = ".tif", 
-                                                          full.names = TRUE)
+            if("spikefree" %in% types_dsm)
+            {
+              #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+              cat("\nCreating Spikefree-based DSM \n")
+              #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+              time_dsm_spikefree = las2dem(params_general = params_general, path_output = file.path(params_general$path_data,"dsm_spikefree"), name_raster = "dsm_spikefree", kill = 200, step = resolution, type_output = "tif", option = "dsm_spikefree")
+              summary_full$time_dsm_spikefree = time_dsm_spikefree
               
+              files_dsm_spikefree = list.files.nonzero(path = file.path(params_general$path_data,"dsm_spikefree"), pattern = ".tif", full.names = TRUE)
+              dsm_spikefree = vrt(files_dsm_spikefree); terra::crs(dsm_spikefree) = crs_scan
+              if(ext(dsm_spikefree) != ext(dtm)){
+                cat("Warning! DSM extent is off and will be adjusted!\n")
+                dsm_spikefree = crop(extend(dsm_spikefree,dtm),dtm)
+              }
+              
+              writeRaster(dsm_spikefree, filename = file.path(path_output,paste0("dsm_spikefree",addendum_name,".tif")), overwrite = T)
+              
+              chm_spikefree = dsm_spikefree - dtm; terra::crs(chm_spikefree) = crs_scan
+              chm_spikefree = clamp(chm_spikefree, lower = 0, values = T)
+              writeRaster(chm_spikefree, filename = file.path(path_output,paste0("chm_spikefree",addendum_name,".tif")), overwrite = T)
+            }
+            
+            if("lspikefree" %in% types_dsm & nrow(params_dsmadaptive) > 0){
+              
+              
+              cat("LSPIKEFREE !")
+              for(id_param in 1:nrow(params_dsmadaptive)){
+                params_dsmadaptive_current = params_dsmadaptive[id_param]
+                name_dsm_lspikefree = as.character(NA)
+                if(nrow(params_dsmadaptive) == 1){
+                  name_dsm_lspikefree = "dsm_lspikefree"
+                } else {
+                  name_dsm_lspikefree = paste0("dsm_lspikefree_multi",
+                                               params_dsmadaptive_current$multi,
+                                               "_slope",
+                                               params_dsmadaptive_current$slope,
+                                               "_offset",
+                                               params_dsmadaptive_current$offset)
+                  }
+                  cat("Creating",name_dsm_lspikefree,"\n")
+                  
+                  time_dsm_lspikefree = make.dsm_locallyadaptive(params_general = params_general, 
+                                                                 path_output = file.path(params_general$path_data,name_dsm_lspikefree), 
+                                                                 name_raster = name_dsm_lspikefree, 
+                                                                 kill = 200, 
+                                                                 step = resolution, 
+                                                                 option = "spikefree", 
+                                                                 params_dsmadaptive = params_dsmadaptive_current, 
+                                                                 normalize = F)
+  
+                  name_time = paste0("time_", name_dsm_lspikefree)
+                  summary_full[, (name_time) := time_dsm_lspikefree]
+                  
+                  files_dsm_lspikefree = list.files.nonzero(path = file.path(params_general$path_data, name_dsm_lspikefree), 
+                                                            pattern = ".tif", 
+                                                            full.names = TRUE)
                 
-                dsm_lspikefree = vrt(files_dsm_lspikefree); terra::crs(dsm_lspikefree) = crs_scan
-                
-                # # TO CHECK BEFORE CRASH ????
-                # res(dsm_lspikefree); res(dtm)
-                # origin(dsm_lspikefree); origin(dtm)
-                # ext(dsm_lspikefree); ext(dtm)
-                
-                if(ext(dsm_lspikefree) != ext(dtm)){
-                  cat("Warning! DSM extent is off and will be adjusted!\n")
-                  dsm_lspikefree = crop(extend(dsm_lspikefree,dtm),dtm)
-                }
-                
-                writeRaster(dsm_lspikefree, 
-                            filename = file.path(path_output, paste0(name_dsm_lspikefree, addendum_name,".tif")), 
-                            overwrite = T)
-                
+                  
+                  dsm_lspikefree = vrt(files_dsm_lspikefree); terra::crs(dsm_lspikefree) = crs_scan
+                  
+                  # # TO CHECK BEFORE CRASH ????
+                  # res(dsm_lspikefree); res(dtm)
+                  # origin(dsm_lspikefree); origin(dtm)
+                  # ext(dsm_lspikefree); ext(dtm)
+                  
+                  if(ext(dsm_lspikefree) != ext(dtm)){
+                    cat("Warning! DSM extent is off and will be adjusted!\n")
+                    dsm_lspikefree = crop(extend(dsm_lspikefree,dtm),dtm)
+                  }
+                  
+                  writeRaster(dsm_lspikefree, 
+                              filename = file.path(path_output, paste0(name_dsm_lspikefree, addendum_name,".tif")), 
+                              overwrite = T)
                 
                 # #TO RESTART AFTER LSPIKEFREE BUG...
                 # dsm_lspikefree = terra::rast("/home/karl/work/dev/ALS_processing_GCA/03_processed_Luki2025/dsm_lspikefree.tiff")
@@ -5575,6 +5636,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                 
               }
             }
+          }
           
           if("lspikefree" %in% types_dsm & nrow(params_dsmadaptive) > 0 & !is.voidstring(params_general$path_lastools)){
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -5621,23 +5683,27 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                 }
               }
             }
-          }
           if (params_general$cleanup == T) file.remove(files_dsm_lspikefree)
           if (params_general$cleanup == T) file.remove(files_dsm_tin)
           if (params_general$cleanup == T) file.remove(files_dsm_highest)
+          }
           
-          #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          cat("\nCreate normalized point cloud \n")
-          #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          step_processing = paste0("normalize point cloud")
-          cat("NOT DONE IN OPENSOURCE VERSION\n")
-          # NOTE: we do not update params_general, the normalized point clouds are going to be stored in a subfolder, indicated by params_general_normalized$path_data
-          params_general$cleanup = F
-          params_general_normalized = NULL
-          params_general_normalized = normalize.pointcloud(params_general = params_general, path_output = "", path_dtm = "", update.path = T)
+          
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+            cat("\nCreate normalized point cloud \n")
+            #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+            step_processing = paste0("normalize point cloud")
+            cat("NOT DONE IN OPENSOURCE VERSION\n")
+            # NOTE: we do not update params_general, the normalized point clouds are going to be stored in a subfolder, indicated by params_general_normalized$path_data
+            params_general$cleanup = F
+            params_general_normalized = NULL
+            params_general_normalized = normalize.pointcloud(params_general = params_general, 
+                                                             path_output = "", path_dtm = "", update.path = T)
+          }
           
           laserpenetration_mean = NULL
-          
           if(estimate.laserpenetration == T){
             step_processing = paste0("estimate laser penetration")
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -5745,7 +5811,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
               
             }
           }
-          
+
           if(!is.null(resolution_sumstatspc)){
             step_processing = paste0("create point cloud statistics")
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -5784,17 +5850,27 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           }
           
           time_end_current = Sys.time()
-          
+
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nProduce combined mask \n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           step_processing = paste0("combine masks")
-          files_masks = list.files(path_output, pattern = "mask_")
-          files_masks = files_masks[files_masks %like% "mask_pd02" | files_masks %like% "mask_cloud" | files_masks %like% "mask_noground"]
-          masks_combined = terra::rast(file.path(path_output,files_masks))
-          mask_combined = sum(masks_combined)
-          terra::writeRaster(mask_combined, filename = file.path(path_output,paste0("mask_combined",addendum_name,".tif")), overwrite = T)
-
+          debug(f.masks)
+          f.masks(path_masks = paths$path_masks,
+                  path_chm_lspikefree = paths$path_chm_lspikefree,
+                  path_quality_scan = paths$path_quality_scan,
+                  path_classification = paths$path_classification)
+          
+          if(!is.voidstring(params_general$path_lastools))
+          {
+            files_masks = list.files(path_output, pattern = "mask_")
+            files_masks = files_masks[files_masks %like% "mask_pd02" | files_masks %like% "mask_cloud" | files_masks %like% "mask_noground"]
+            masks_combined = terra::rast(file.path(path_output,files_masks))
+            mask_combined = sum(masks_combined)
+            terra::writeRaster(mask_combined, 
+                               filename = file.path(path_output,paste0("mask_combined",addendum_name,".tif")), 
+                               overwrite = T)
+          }
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nProduce synthesis \n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -6517,6 +6593,7 @@ make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
       "path_dsm_tin"             = paste0(dir_output_list[2], "/dsm_tin.tif"),
       "path_dsm_lspikefree"      = paste0(dir_output_list[2], "/dsm_lspikefree.tif"),
       "path_dtm"                 = paste0(dir_output_list[2], "/dtm.tif"),
+      "path_classification"      = paste0(dir_output_list[2], "/classification.tif"),
       "path_quality_scan_initial"= paste0(dir_output_list[2], "/quality_scan_initial.tif"),
       "path_quality_scan"        = paste0(dir_output_list[2], "/quality_scan.tif"),
       "path_quality_ground"      = paste0(dir_output_list[2], "/quality_ground.tif"),
@@ -6536,7 +6613,6 @@ make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
       
       # custom/GCA
       "path_classification_provider" = paste0(dir_output_list[8], "/classification_provider.tif"),
-      "path_classification"          = paste0(dir_output_list[8], "/classification.tif"),
       "path_dtm_provider"            = paste0(dir_output_list[8], "/dtm_provider.tif"),
       
       # custom/canopy
