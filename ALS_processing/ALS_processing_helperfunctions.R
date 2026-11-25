@@ -1284,7 +1284,7 @@ find.clusters_data = function(params_general, path_output = "", nbclusters_force
           # copy buffer files (with clipping) into subdirectory
           cleanup_default = params_general_cluster$cleanup
           params_general_cluster$cleanup = F
-          call.lastools(command_lastools = "lasclip",arguments_lastools = paste0("-drop_withheld -poly ",file.path.system(type_os = params_general$type_os, path_outlines_buffer)," -odix _clipped"),params_general = params_general_cluster, path_output = params_general_cluster$path_data, type_output = "laz")
+          call.lastools(command_lastools = "lasclip",arguments_lastools = paste0("-drop_withheld -poly ",file.path.system(type_os = params_general$type_os, path_outlines_buffer)," -odix _clipped"), params_general = params_general_cluster, path_output = params_general_cluster$path_data, type_output = "laz")
           params_general_cluster$cleanup = cleanup_default
           
           # remove extraneous files
@@ -4730,14 +4730,19 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
     
     cat("\nFound", length(clusters_data), "clusters\n")
     outlines_input = vect(file.path(params_general_baseline$path_data, "outlines_input.shp"))
-    
+
     if(is.voidstring(params_general_baseline$path_lastools))
-    { 
-      path_02_input = paste0(dir_dataset, "../02_input")
-      if(!dir.exists(path_02_input)) dir.create(path_02_input, recursive = TRUE)
+    {
+      path_02_input = stringr::str_replace(path_output, "_03_output", "_02_input")
+      
+      if(!dir.exists(path_02_input)){
+        dir.create(path_02_input, recursive = TRUE)
+      }
       for (i in seq_along(clusters_data)){
-        path_02_input_cluster = paste0(path_02_input, "/part_", i)
-        if(!dir.exists(path_02_input_cluster)) dir.create(path_02_input_cluster, recursive = TRUE)
+        path_02_input_cluster = file.path(paste0(path_02_input, "/part_", i))
+        if(!dir.exists(path_02_input_cluster)) {
+          dir.create(path_02_input_cluster, recursive = TRUE)
+        }
         file.copy(list.files(clusters_data[[i]]$path_data, full.names = TRUE), 
                   path_02_input_cluster)
       }
@@ -6103,7 +6108,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 # - name_job: name of current job (in case data set is processed several times, use v1, v2, or similar)
 
 # TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
-process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
+process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, by_folder = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
   
   if(logfile != "" & dir.exists(dirname(logfile))){
     # new in v.50: create a log file for the most common issues
@@ -6146,10 +6151,13 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpd
     
     # new in v.42: processing  by file
     if(by_file == F){
-      dir_structure = unique(dirname(dir_structure))
+      unique(dirname(dir_structure))
+      if (by_folder == F) {
+        dir_structure = "." 
+      }
     }
     dir_structure.dt = data.table(dir_structure)
-    dir_structure.dt[, dir_structure_clean := ifelse(like(dir_structure, ".zip",fixed = T) | like(dir_structure, paste0(".",type_file),fixed = T), substr(dir_structure,1,nchar(dir_structure)-4), dir_structure)]
+    dir_structure.dt[, dir_structure_clean := dirname(dir_structure)]#ifelse(like(dir_structure, ".zip",fixed = T) | like(dir_structure, paste0(".",type_file),fixed = T), substr(dir_structure,1,nchar(dir_structure)-4), dir_structure)]
     dir_structure.dt[, path_input := file.path(dir_dataset,dir_structure)]
     dir_structure.dt[, path_output := file.path(dir_processed, dir_structure_clean)]
     dir_structure.dt[, name_acquisition := basename(dir_structure_clean)]
