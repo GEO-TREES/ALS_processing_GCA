@@ -5893,8 +5893,26 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             
             mask_noground = terra::rast(paths$path_masks)$mask_noground
             perc_nogrd = 100 * max(0,as.numeric(global(dtm,"notNA")-global(mask_noground,"notNA")))/as.numeric(global(dtm,"notNA"))
-            
+          #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          cat("\nProduce derived metrics raster layers \n")
+          step_processing = paste0("derived metrics raster layer")
+
+          f.canopy(path_L3 = paths$path_L3,
+                   path_chm_lspikefree = paths$path_chm_lspikefree,
+                   path_masks = paths$path_mask,
+                   path_L1_tiles = paths$path_L1_tiles, 
+                   opt_cores = params_general$n_cores,
+                   crs_scan = crs_scan)
+          
+          debug(f.terrain)
+          f.terrain(res_grid = 5,
+                    path_terrain = paths$path_terrain_5m,
+                    path_dtm = paths$path_dtm,
+                    path_L3 = paths$path_L3)
           }
+          
+          #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nProduce synthesis \n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -6167,7 +6185,7 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_ti
     n_cores = check.n_cores(n_cores, type_os, logfile)
     # use.blast2dem = update.blast2dem(use.blast2dem, type_os)
     # cat("\n")
-    
+
     # new in v.42: processing  by file
     if(by_file == F){
       dir_structure = unique(dirname(dir_structure))
@@ -6636,7 +6654,9 @@ make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
       "path_quality_ground"      = paste0(dir_output_list[2], "/quality_ground.tif"),
       "path_masks"               = paste0(dir_output_list[2], "/masks.tif"),
       
-      # L3: derived canopy metrics
+      # L3: derived metrics
+      # canopy
+      "path_L3"                  = paste0(dir_output_list[3]),   
       "path_INFO_L3"             = paste0(dir_output_list[3], "/_INFO_L3.txt"),
       "path_metrics_canopy_100m" = paste0(dir_output_list[3], "/metrics_canopy_100m.tif"),
       "path_metrics_canopy_50m"  = paste0(dir_output_list[3], "/metrics_canopy_50m.tif"),
@@ -6647,6 +6667,12 @@ make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
       "path_metrics_canopy_quadrats_100m" = paste0(dir_output_list[3], "/metrics_canopy_quadrats_100m.gpkg"),
       "path_metrics_canopy_quadrats_50m"  = paste0(dir_output_list[3], "/metrics_canopy_quadrats_50m.gpkg"),
       "path_metrics_canopy_quadrats_25m"  = paste0(dir_output_list[3], "/metrics_canopy_quadrats_25m.gpkg"),
+      # custom/terrain
+      "path_terrain_5m"               = paste0(dir_output_list[3], "/terrain_5m.tif"),
+      "path_metrics_terrain_25m"      = paste0(dir_output_list[3], "/metrics_terrain_25m.tif"),
+      "path_metrics_terrain_50m"      = paste0(dir_output_list[3], "/metrics_terrain_50m.tif"),
+      "path_metrics_terrain_100m"     = paste0(dir_output_list[3], "/metrics_terrain_100m.tif"),
+      "path_metrics_terrain_quadrats" = paste0(dir_output_list[3], "/metrics_terrain_quadrats.gpkg"),
       
       # custom/GCA
       "path_classification_provider" = paste0(dir_output_list[8], "/classification_provider.tif"),
@@ -6655,14 +6681,8 @@ make.paths = function(path_input, path_output, format = c("gca", "geotrees")){
       # custom/canopy
       "path_metrics_canopy_test_25m"  = paste0(dir_output_list[9], "/metrics_canopy_test_25m.tif"),
       "path_metrics_canopy_test_50m"  = paste0(dir_output_list[9], "/metrics_canopy_test_50m.tif"),
-      "path_metrics_canopy_test_100m" = paste0(dir_output_list[9], "/metrics_canopy_test_100m.tif"),
+      "path_metrics_canopy_test_100m" = paste0(dir_output_list[9], "/metrics_canopy_test_100m.tif")
       
-      # custom/terrain
-      "path_terrain_5m"               = paste0(dir_output_list[10], "/terrain_5m.tif"),
-      "path_metrics_terrain_25m"      = paste0(dir_output_list[10], "/metrics_terrain_25m.tif"),
-      "path_metrics_terrain_50m"      = paste0(dir_output_list[10], "/metrics_terrain_50m.tif"),
-      "path_metrics_terrain_100m"     = paste0(dir_output_list[10], "/metrics_terrain_100m.tif"),
-      "path_metrics_terrain_quadrats" = paste0(dir_output_list[10], "/metrics_terrain_quadrats.gpkg")
       )
     } else {
     #  ???????
