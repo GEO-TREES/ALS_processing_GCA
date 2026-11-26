@@ -811,6 +811,7 @@ ctg_summarize_chunk <- function(las_chunk, ...) {
   points_ground <- nrow(las.ground@data)
   fraction_ground <- points_ground / points
   
+  # area <- as.numeric(sf::st_area(las))
   area <- as.numeric(sf::st_area(las))
   
   mingps <- min(las$gpstime, na.rm = TRUE)
@@ -818,9 +819,12 @@ ctg_summarize_chunk <- function(las_chunk, ...) {
   
   pulses <- las@header[["Number of points by return"]][1]
   
-  density_points <- if (area > 0) points / area else NA_real_
-  density_pulses <- if (area > 0) pulses / area else NA_real_
-  spacing_pulses <- if (density_pulses > 0) sqrt(1 / density_pulses) else NA_real_
+  # density_points <- if (area > 0) points / area else NA_real_
+  # density_pulses <- if (area > 0) pulses / area else NA_real_
+  # spacing_pulses <- if (density_pulses > 0) sqrt(1 / density_pulses) else NA_real_
+  density_points <- if (isTRUE(area > 0)) points / area else NA_real_
+  density_pulses <- if (isTRUE(area > 0) && !is.na(pulses)) pulses / area else NA_real_
+  spacing_pulses <- if (isTRUE(density_pulses > 0)) sqrt(1 / density_pulses) else NA_real_
   
   data.table(
     classified = points_ground > 0,
@@ -2127,10 +2131,11 @@ summarize.lasinfo = function(path){
   }
 }
 
+
 # deduplicate data
 # strict scheme is applied, i.e. only exact duplicates (x, y, z) are removed, and not just x y duplicates (default in LAStools)
 lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
-
+  
   # define output directory
   if(path_output == ""){
     path_output = file.path(params_general$path_data,"lasduplicate")
@@ -4732,9 +4737,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
     cat("\nFound", length(clusters_data), "clusters\n")
     outlines_input = vect(file.path(params_general_baseline$path_data, "outlines_input.shp"))
 
-    browser()
-    browser()
-
     if(is.voidstring(params_general_baseline$path_lastools))
     {
         # path_02_input = stringr::str_replace(path_output, basename(dir_processed), "_02_input")
@@ -5008,6 +5010,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 
           step_processing = paste0("deduplicate")
           cat("\nDuplicate (xyz) removal\n")
+          
           params_general = lasduplicate(params_general)
 
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -6164,9 +6167,6 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_ti
     n_cores = check.n_cores(n_cores, type_os, logfile)
     # use.blast2dem = update.blast2dem(use.blast2dem, type_os)
     # cat("\n")
-    
-    browser()
-    browser()
     
     # new in v.42: processing  by file
     if(by_file == F){
