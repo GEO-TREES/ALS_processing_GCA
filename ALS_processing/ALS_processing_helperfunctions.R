@@ -20,6 +20,7 @@ library(parallel) # for custom parallel processing
 # library(foreach)
 # library(doParallel)
 library(future)
+library(MultiscaleDTM)
 
 system(paste("taskset -cp", Sys.getpid()))
 
