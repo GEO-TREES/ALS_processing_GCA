@@ -1985,7 +1985,7 @@ lasinfo = function(params_general, path_output = ""){
   
   # define output directory
   if(path_output == ""){
-    path_output = file.path(params_general$path_data,"lasinfo")
+    path_output = file.path(params_general$path_data, "lasinfo")
   }
   if(!dir.exists(path_output)) dir.create(path_output)
   
@@ -2023,9 +2023,10 @@ lasinfo = function(params_general, path_output = ""){
   } else {
     
     cat("open source info called...\n")
-    files.input = list.files(path = params_general$path_data, pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
+    files.input = list.files(path = params_general$path_02_input_cluster, pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
     
     ctg <- readLAScatalog(files.input)
+    ctg = ctg[ctg$Number.of.point.records > 0]
     
     opt_chunk_size(ctg) <- 0  # file-by-file
     opt_chunk_buffer(ctg) <- 0
@@ -3007,14 +3008,14 @@ filter.height = function(params_general, path_output = "", height_lim = 125, upd
     # lasindex(params_general)
   } else {
     cat("filter.height open source called...\n")
-    output_filename <- file.path(path_output, "*.copc.laz")
+    output_filename <- file.path(path_output, "*.laz")
 
     params_general$open_pipeline = params_general$open_pipeline +
       lasR::hag() + 
       edit_attribute(filter = paste0("HAG > ", height_lim), 
                      attribute = "Classification", 
                      value = 18) + 
-      lasR::write_copc(output_filename)
+      lasR::write_las(output_filename)
     
     # tri <- triangulate(filter = keep_ground_and_water())
     # extra <- add_extrabytes("int", "HAG", "Height Above Ground")
@@ -4487,7 +4488,7 @@ compute.sumstats_pc = function(params_general, path_output = "", resolution = 10
 # applied to every data subset and processing the las files in it
 # TODO: should be split into smaller chunks
 
-process.datasubset = function(path_lastools, path_tmp, path_input, path_output, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step){
+process.datasubset = function(path_lastools, path_tmp, path_input, path_output, path_02_input, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step){
   
   # remove temporary files (terra package)
   tmpFiles(old=TRUE, remove=TRUE)
@@ -4731,25 +4732,33 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
     cat("\nFound", length(clusters_data), "clusters\n")
     outlines_input = vect(file.path(params_general_baseline$path_data, "outlines_input.shp"))
 
+    browser()
+    browser()
+
     if(is.voidstring(params_general_baseline$path_lastools))
     {
-      path_02_input = stringr::str_replace(path_output, "_03_output", "_02_input")
-      
-      if(!dir.exists(path_02_input)){
-        dir.create(path_02_input, recursive = TRUE)
-      }
-      for (i in seq_along(clusters_data)){
-        path_02_input_cluster = file.path(paste0(path_02_input, "/part_", i))
-        if(!dir.exists(path_02_input_cluster)) {
-          dir.create(path_02_input_cluster, recursive = TRUE)
-        }
-        file.copy(list.files(clusters_data[[i]]$path_data, full.names = TRUE), 
-                  path_02_input_cluster)
-      }
+        # path_02_input = stringr::str_replace(path_output, basename(dir_processed), "_02_input")
+        # path_02_input = path_02_input
+        
+        # if(dir.exists(path_02_input)) unlink(path_02_input, recursive = TRUE)
+        # dir.create(path_02_input, recursive = TRUE)
+        for (i in seq_along(clusters_data)){
+          if(length(clusters_data) > 1){
+            path_02_input_cluster = file.path(paste0(path_02_input, "/part_", i))
+          }
+          else
+          {
+            path_02_input_cluster = file.path(path_02_input)
+          }
+          if(!dir.exists(path_02_input_cluster)) {
+            dir.create(path_02_input_cluster, recursive = TRUE)
+          }
+          file.copy(list.files(clusters_data[[i]]$path_data, full.names = TRUE), 
+                    path_02_input_cluster)
+        } 
     }
     
     # STOP IF 02.INPUT IS ONLY PRODUCED, START THE SKIP FEATURE ?
-    
     nberrors = 0
     for(i in 1:length(clusters_data)){
       
@@ -4762,7 +4771,11 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       # we iteratively update params_general and create output folders 
       # OPEN SOURCE VERSION: ADDED CLUSTER PATH PARAMETER 02_input
       params_general = clusters_data[[i]]
-      path_02_input_cluster = list.dirs(path_02_input)[-1][[i]]
+      if (length(list.dirs(path_02_input)) > 1) {
+        path_02_input_cluster = list.dirs(path_02_input)[-1][[i]]
+      } else{
+        path_02_input_cluster = path_02_input
+      }
       params_general$path_02_input_cluster = path_02_input_cluster
       
       path_output = path_output_baseline
@@ -4923,6 +4936,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                               path_quality_scan = paths$path_quality_scan_initial,
                               # opt_res = resolution, 
                               opt_cores=params_general$n_cores)
+            crs_scan = terra::crs(terra::rast(paths$path_classification_provider))
           }
           
           # TODO: mettre le code de JR dans une fonction remove overhanging points
@@ -4992,24 +5006,22 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             }
           }
 
-          # debug(lasduplicate)
           step_processing = paste0("deduplicate")
           cat("\nDuplicate (xyz) removal\n")
           params_general = lasduplicate(params_general)
 
+          #%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          cat("\nGet summary stats\n")
+          #%%%%%%%%%%%%%%%%%%%%%%%%%%#
+          # Info to be implemented in open source
+          lasinfo(params_general = params_general)
+          load(file.path(params_general$path_data,"summary_bytile.RData"))
+          load(file.path(params_general$path_data,"summary_full.RData"))
+          
           if(!is.voidstring(params_general$path_lastools))
           {
             # Sorting to be implemented in open source
             params_general = call.lastools(command_lastools = "lassort",arguments_lastools = "", params_general = params_general)
-            
-            #%%%%%%%%%%%%%%%%%%%%%%%%%%#
-            cat("\nGet summary stats\n")
-            #%%%%%%%%%%%%%%%%%%%%%%%%%%#
-            
-            # Info to be implemented in open source
-            lasinfo(params_general = params_general)
-            load(file.path(params_general$path_data,"summary_bytile.RData"))
-            load(file.path(params_general$path_data,"summary_full.RData"))
             
             # noise removal
             # 'step' gives the cube size (e.g., 4m), 'isolated' the number of points
@@ -5137,16 +5149,17 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nGet summary stats -- classify pipeline + rasters.initial in Open Source\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
+
+          lasinfo(params_general = params_general)
+          load(file.path(params_general$path_data,"summary_bytile.RData"))
+          load(file.path(params_general$path_data,"summary_full.RData"))
+          
+          # add infos on ground classification
+          summary_full$time_ground_basic = time_ground_basic
+          summary_full$time_ground_refinement = time_ground_refinement
+          
           if(!is.voidstring(params_general$path_lastools))
           {
-            lasinfo(params_general = params_general)
-            load(file.path(params_general$path_data,"summary_bytile.RData"))
-            load(file.path(params_general$path_data,"summary_full.RData"))
-  
-            # add infos on ground classification
-            summary_full$time_ground_basic = time_ground_basic
-            summary_full$time_ground_refinement = time_ground_refinement
-  
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
             cat("\nGet pulse density and scan angle\n")
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -5369,7 +5382,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             mask_noground = ifel(is.na(mask_ground), 1, NA)
             mask_noground = terra::resample(mask_noground, dtm_highest)
             writeRaster(mask_noground, filename = file.path(path_output,paste0("mask_noground",addendum_name,".tif")), overwrite = T)
-            
+              
             # get percentage of areas with ground points
             perc_nogrd = 100 * max(0,as.numeric(global(dtm,"notNA")-global(mask_noground,"notNA")))/as.numeric(global(dtm,"notNA"))
           }
@@ -5693,7 +5706,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           if (params_general$cleanup == T) file.remove(files_dsm_highest)
           }
           
-          
           if(!is.voidstring(params_general$path_lastools))
           {
             #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -5740,7 +5752,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             
             if (params_general$cleanup == T) file.remove(files_returns_first)
             if (params_general$cleanup == T) file.remove(files_returns_firstlast)
-            
           }
           
           step_processing = paste0("create DSMs from normalized point cloud")
@@ -5860,12 +5871,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           cat("\nProduce combined mask \n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           step_processing = paste0("combine masks")
-          debug(f.masks)
-          f.masks(path_masks = paths$path_masks,
-                  path_chm_lspikefree = paths$path_chm_lspikefree,
-                  path_quality_scan = paths$path_quality_scan,
-                  path_classification = paths$path_classification)
-          
           if(!is.voidstring(params_general$path_lastools))
           {
             files_masks = list.files(path_output, pattern = "mask_")
@@ -5875,6 +5880,17 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             terra::writeRaster(mask_combined, 
                                filename = file.path(path_output,paste0("mask_combined",addendum_name,".tif")), 
                                overwrite = T)
+          }
+          else{
+            
+            f.masks(path_masks = paths$path_masks,
+                    path_chm_lspikefree = paths$path_chm_lspikefree,
+                    path_quality_scan = paths$path_quality_scan,
+                    path_classification = paths$path_classification)
+            
+            mask_noground = terra::rast(paths$path_masks)$mask_noground
+            perc_nogrd = 100 * max(0,as.numeric(global(dtm,"notNA")-global(mask_noground,"notNA")))/as.numeric(global(dtm,"notNA"))
+            
           }
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nProduce synthesis \n")
@@ -5916,7 +5932,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
               dates_acquisition$maxdt = as.Date(metadata$acq_maxdt,"%d/%m/%Y")
             }
           }
-          
+
           cat("\ncreate a polygon + metadata\n")
           # create a polygon + metadata
           outline_localCRS$dataset = metadata$dataset
@@ -5942,7 +5958,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           outline_localCRS$notes = metadata$notes
           outline_localCRS$issues = metadata$issues
           outline_localCRS$height_lim = height_lim
-          outline_localCRS$angle_lim = ifelse(is.null(angle_lim),as.numeric(NA),angle_lim)
+          outline_localCRS$angle_lim = ifelse(is.null(angle_lim), as.numeric(NA), angle_lim)
           outline_localCRS$class_rm = class_rm
           outline_localCRS$exclass_rm = exclass_rm
           
@@ -5969,15 +5985,15 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           outline_localCRS$pd_pulse = round(summary_full$density_pulses_mean,3)
           outline_localCRS$sdpd_pulse = round(summary_full$density_pulses_sd,3)
           outline_localCRS$frac_grnd = round(summary_full$fraction_ground_mean,3)
-          outline_localCRS$angle99th = angle99th
+          outline_localCRS$angle99th = NULL # angle99th
           
           cat("\ninformation from masks\n")
           # information from masks
           outline_localCRS$perc_pd02 = round(perc_pd02,2)
           outline_localCRS$perc_pd04 = round(perc_pd04,2)
-          outline_localCRS$perc_steep = round(perc_steep,2)
+          # outline_localCRS$perc_steep = round(perc_steep,2)
           outline_localCRS$perc_nogrd = round(perc_nogrd,2)
-          outline_localCRS$perc_undtm = round(perc_undtm,2)
+          # outline_localCRS$perc_undtm = round(perc_undtm,2)
           outline_localCRS$perc_cloud = round(perc_cloud,2)
           
           cat("\nadd additional information about the resulting landscape\n")
@@ -6108,7 +6124,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 # - name_job: name of current job (in case data set is processed several times, use v1, v2, or similar)
 
 # TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
-process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, by_folder = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
+process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_tiles, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, by_folder = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
   
   if(logfile != "" & dir.exists(dirname(logfile))){
     # new in v.50: create a log file for the most common issues
@@ -6149,21 +6165,25 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpd
     # use.blast2dem = update.blast2dem(use.blast2dem, type_os)
     # cat("\n")
     
+    browser()
+    browser()
+    
     # new in v.42: processing  by file
     if(by_file == F){
-      unique(dirname(dir_structure))
+      dir_structure = unique(dirname(dir_structure))
       if (by_folder == F) {
         dir_structure = "." 
       }
     }
     dir_structure.dt = data.table(dir_structure)
-    dir_structure.dt[, dir_structure_clean := dirname(dir_structure)]#ifelse(like(dir_structure, ".zip",fixed = T) | like(dir_structure, paste0(".",type_file),fixed = T), substr(dir_structure,1,nchar(dir_structure)-4), dir_structure)]
+    dir_structure.dt[, dir_structure_clean := ifelse(like(dir_structure, ".zip",fixed = T) | like(dir_structure, paste0(".",type_file),fixed = T), substr(dir_structure,1,nchar(dir_structure)-4), dir_structure)]
     dir_structure.dt[, path_input := file.path(dir_dataset,dir_structure)]
     dir_structure.dt[, path_output := file.path(dir_processed, dir_structure_clean)]
+    dir_structure.dt[, path_02_input := file.path(dir_preprocessed_tiles, dir_structure_clean)]
     dir_structure.dt[, name_acquisition := basename(dir_structure_clean)]
     
     # create output file with information on processing progress
-    information_processing = data.table(id = 1:nrow(dir_structure.dt), name_job = name_job, name_acquisition = dir_structure.dt$name_acquisition, path_input = dir_structure.dt$path_input, path_output = dir_structure.dt$path_output, time_start = as.character(NA), time_end = as.character(NA), time_processing_minutes = as.character(NA), status = as.character(NA))
+    information_processing = data.table(id = 1:nrow(dir_structure.dt), name_job = name_job, name_acquisition = dir_structure.dt$name_acquisition, path_input = dir_structure.dt$path_input, path_output = dir_structure.dt$path_output, path_02_input = dir_structure.dt$path_02_input, time_start = as.character(NA), time_end = as.character(NA), time_processing_minutes = as.character(NA), status = as.character(NA))
     
     # restart
     # information_processing = fread(file = file.path(dir_processed,paste0(name_job,"_",time_start_job,".csv")))
@@ -6181,17 +6201,23 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpd
       dir_current = dir_structure.dt[i]
       
       if(!dir.exists(dir_current$path_output)){dir.create(dir_current$path_output, recursive = TRUE)}
+      if(!dir.exists(dir_current$path_02_input)){dir.create(dir_current$path_02_input, recursive = TRUE)}
       
       # updated in v43 to avoid overwriting of already processed data in cases where data can be split into multiple subsets
       # updated in v.1.0.0 replacing summary_full with _INFO_summary_processing (the last file to be created)
-      file_summary_current = list.files(dir_current$path_output,pattern = "_INFO_summary_processing", recursive = T)
+      file_summary_current = list.files(dir_current$path_output, 
+                                        pattern = "_INFO_summary_processing", 
+                                        recursive = T)
       dirs_current = list.dirs(dir_current$path_output, recursive = F)
       
       # updated in v.1.0.0 Pattern matching to subset what should (not) be processed
       skip.pattern = F
       if(length(patterns_skip) > 0){
         for(pattern_skip in patterns_skip){
-          skip.pattern = ifelse(like(dir_current$path_input,pattern_skip, fixed = T), T, skip.pattern)
+          skip.pattern = ifelse(like(dir_current$path_input,
+                                     pattern_skip, 
+                                     fixed = T), T, 
+                                skip.pattern)
         }
       }
       
@@ -6243,6 +6269,7 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpd
         path_tmp = tmpdir_processing
         path_input = dir_current$path_input
         path_output = dir_current$path_output
+        path_02_input = dir_current$path_02_input 
         
         addendum_name = ""
         if(add.timestamp == T){
@@ -6259,7 +6286,7 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_processed, tmpd
         
         
         status = tryCatch(
-          process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile,deduplicate = deduplicate, denoise = denoise, reclassify = reclassify, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step),
+          process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, path_02_input = path_02_input, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile,deduplicate = deduplicate, denoise = denoise, reclassify = reclassify, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step),
           error = function(e){
             if(file.exists(logfile)){
               logfile_dt = data.table(path = path_output, issue = paste0("ERROR! Processing failed with message:", conditionMessage(e)))
@@ -6336,7 +6363,9 @@ visualize.processing = function(dir_processed, idx_location = NULL, remove_buffe
   outlines_input$id_location = 1:nrow(outlines_input)
   noutlines_input = nrow(outlines_input)
   
-  cat("Found",noutlines_input,"distinctive and separately processed locations\n")
+  cat("Found", 
+      noutlines_input, 
+      "distinctive and separately processed locations\n")
   
   if(!is.null(dirsave_locations)) writeVector(outlines_input, filename = file.path(dirsave_locations,"outlines_input.shp"), overwrite = T)
   

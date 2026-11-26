@@ -91,6 +91,7 @@ system(paste("taskset -cp", Sys.getpid()))
 name_job = "gca"
 type_file = "las"
 dir_dataset = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/01_raw_test_clusters/"
+dir_preprocessed_tiles = "/home/karl/work/data/Africa/Africa_EAfrica_UG_OFVi_Krief_Sebitoli2024/02_input"
 dir_processed =  "../03_processed_SebitoliTEST"
 tmpdir_processing = "/home/karl/work/data/tmp/GCA_open_SebitoliTEST"
 path_lastools = ""
@@ -108,6 +109,8 @@ remove.evlr = F   # probably not necessary in most cases, but should be generall
 use.blast2dem = T # should be activated by default as it improves (or makes possible) TIN construction in very dense point clouds, but: not tested on Linux so far
 type_architecture = "64" # only needed if 32bit Windows should be forced; 32 can be a bit more permissive, particularly for blast2dem
 
+by_folder = TRUE # Replicate nested folder structure within dir_dataset if TRUE. If FALSE, process all .las/.laz files recursively
+
 system(paste("taskset -cp", Sys.getpid()))
 
 # debug(process.dataset)
@@ -117,6 +120,7 @@ results = process.dataset(
   name_job = name_job
   , type_file = type_file
   , dir_dataset = dir_dataset
+  , dir_preprocessed_tiles = dir_preprocessed_tiles
   , dir_processed = dir_processed
   , tmpdir_processing = tmpdir_processing
   , path_lastools = path_lastools
@@ -132,6 +136,7 @@ results = process.dataset(
   , patterns_skip = c() # skipping the processing of some folders
   , cleanup = T
   , retile = T
+  , by_folder = by_folder
 )
 
 # #%%%%%%%%%%%%%%%%%%#
@@ -227,4 +232,5 @@ results = process.dataset(
 # # patterns_skip = c()
 # # print.summary_job = F
 # # 
+
 
