@@ -5904,7 +5904,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                    opt_cores = params_general$n_cores,
                    crs_scan = crs_scan)
           
-          debug(f.terrain)
           f.terrain(res_grid = 5,
                     path_terrain = paths$path_terrain_5m,
                     path_dtm = paths$path_dtm,
