@@ -1031,6 +1031,42 @@ lasinfo.repair =  function(params_general){
   }
 }
 
+
+# TEST to rename tiles by site and XY coords in a consistent way
+# from wiesehahn on lasR discussions
+# function to get extent and center coordinate for a bunch of files
+get_tile_name <- function(path, full.names = TRUE){
+  
+  get_file_center <- function(file){
+    fileheader <- lidR::readLASheader(file)
+    
+    minx = fileheader$`Min X`
+    miny = fileheader$`Min Y`
+    maxx = fileheader$`Max X`
+    maxy = fileheader$`Max Y`
+    
+    meanx = as.integer(minx + 0.5*(maxx-minx))
+    meany = as.integer(miny + 0.5*(maxy-miny))
+    
+    if (full.names == FALSE){
+      file <- basename(file)
+    }
+    
+    
+    return(data.frame(file = file, minx, miny, maxx, maxy, meanx, meany))
+    
+  }
+  
+  f <- list.files(path, pattern = "*.laz$", full.names = TRUE, recursive = TRUE)
+  return(as.data.frame(do.call(rbind, lapply(f, get_file_center))))
+}
+
+
+# # apply function on folder and rename laz files to xcenter_ycenter.laz
+# t <- get_tile_name(dir_dataset, full.names = T)
+# file.rename(from = t$file, to = fs::path(dirname(t$file), paste0(t$site_name, "_", t$meanx, "_", t$meany, ".laz")))
+
+
 # new in v.44, unifies cleaning and reprojection operations into a single operation (previously done in lastile and las2utm)
 # new in v.44: this new operation adds additional features, such as the removal of isolated points outside of bounding box, and remove.vlr and remove.evlr. Sometimes problematic (E)VLRs cause LAStools to crash, so this should not be a problem anymore
 # also new in v.44: option to rescale the lasfiles, e.g. by setting factor_rescale = 0.01, but this needs to be done carefully (only after inspection of files)
@@ -1094,6 +1130,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
                        "ScanAngle", "UserData", "PointSourceID", 
                        "gpstime", "R", "G", "B", "NIR")
     
+    
     output_filename <- file.path(path_output, "*.copc.laz")
 
     epsg_code <- as.numeric(strsplit(metadata$acq_crs, split = ":")[[1]][2])
@@ -1107,6 +1144,8 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
     ctg <- lidR::readALScatalog(list.files(params_general$path_data, 
                                            pattern = paste0("\\.", type_file), 
                                            full.names = TRUE))
+    
+    
     opt_chunk_size(ctg) = size_tile
 
     lasR::exec(
@@ -1115,7 +1154,16 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
       ncores = params_general$n_cores,
       progress = T
     )
+    
+    # # site_name = basename(dirname(dirname(dirname(dir_dataset))))
+    # site_name = "Site"
 
+    # apply function on folder and rename laz files to xcenter_ycenter.copc.laz
+    t <- get_tile_name(path_output, 
+                       # site_name = site_name, 
+                       full.names = T)
+    file.rename(from = t$file, to = fs::path(dirname(t$file), paste0(t$meanx, "_", t$meany, ".copc.laz")))
+    
   }
   
   if (params_general$cleanup == T) {
@@ -5148,9 +5196,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                                            height_lim = height_lim, 
                                            update.path = TRUE)
           }
-          
-          browser()
-          browser()
           
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nGet summary stats -- classify pipeline + rasters.initial in Open Source\n")
