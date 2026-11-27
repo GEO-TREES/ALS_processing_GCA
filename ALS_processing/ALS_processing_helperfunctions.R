@@ -1094,13 +1094,14 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
     # 
 
     angle_lim = NULL
-    opt_filter = c(ifelse(!is.null(angle_lim), 
-                          paste("-drop_abs_scan_angle_above", 
-                                angle_lim, 
-                                sep = " "),
-                          ""),
-                   "classification %out% 7 18",
-                   "-drop_withheld")
+    opt_filter = "-filter_with_voxel .1"
+      # c(ifelse(!is.null(angle_lim), 
+      #                     paste("-drop_abs_scan_angle_above", 
+      #                           angle_lim, 
+      #                           sep = " "),
+      #                     ""),
+      #              "classification %out% 7 18",
+      #              "-drop_withheld")
     
     opt_attributes = c("Intensity", "ReturnNumber", "NumberOfReturns", 
                        "Synthetic", "Withheld", "Classification", 
@@ -2350,6 +2351,68 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
     return(params_general)
   }
 }
+
+# create DTM/DSM
+# step size is the initial [!] step size for the algorithm to find ground points (i.e. find ground points within a 10 by 10 m window for step = 10); 
+# sub is subwindows for refinement of ground characterization; 
+# if both are set to NULL, the default parameters are used
+classify_buildings = function(params_general, path_output = "", update.path = TRUE, arguments_additional = ""){
+  
+  # define output directory
+  if(path_output == ""){
+    path_output = file.path(params_general$path_data,"classify_buildings")
+  }
+  if(!dir.exists(path_output)) dir.create(path_output)
+  
+  # # pass lastools command to system
+  # if(!is.voidstring(params_general$path_lastools)){
+  #   return_system = system(
+  #     paste(
+  #       file.path.system(type_os = params_general$type_os, params_general$path_lastools, update.command_lastools("lasground_new", type_architecture = params_general$type_architecture)),
+  #       "-i",
+  #       file.path.system(type_os = params_general$type_os, params_general$path_data,paste0("*.",params_general$type_file)),
+  #       "-cores", params_general$n_cores,
+  #       ifelse(!is.null(step),paste0("-step ", round(step, 3)),""),
+  #       ifelse(!is.null(sub),paste0("-sub ", round(sub, 3)),""),
+  #       ifelse(!is.null(step),paste0("-bulge ", round(step/divisor_bulge, 3)),""),
+  #       arguments_additional,
+  #       "-odir", file.path.system(type_os = params_general$type_os, path_output),
+  #       "-olaz",
+  #       ifelse(params_general$type_os == "Linux","2>&1", "") # crucial for Linux where LAStools seems to write to stderr
+  #     )
+  #   )
+  #   
+  #   if(return_system == 0){
+  #     cat("Successful completion of system command\n")
+  #   } else {
+  #     # logfile_dt = data.table(path = as.character(NA), issue = paste0("WARNING! Lasground_new generated non-0 return."))
+  #     # fwrite(logfile_dt, file = params_general$logfile, append = T)
+  #     cat("System command could not be completed\n")
+  #   } 
+  # } else {
+    
+    params_general$open_pipeline  = params_general$open_pipeline + 
+      # compute planarity and sphericity in a 2.5 m radius
+      lasR::geometry_features(r = 2.5, features = "ps") +
+      lasR::edit_attribute(filter = c("planarity > .8", "sphericity < .2", "HAG > 2"), 
+                           attribute = "Classification",
+                           value = 6)
+    
+    return(params_general)
+    
+  }
+  
+  # if(params_general$cleanup == T) cleanup.files(params_general$path_data)
+  # 
+  # if(update.path == TRUE){
+  #   cat("Amending file path and reindexing\n")
+  #   params_general$path_data = path_output
+  #   params_general$type_file = "laz"
+  #   # lasindex(params_general)
+  #   cat("Amended file path returned\n")
+  #   return(params_general)
+  # }
+# }
 
 get.middle = function(x){x[ceiling(length(x)/2)]}
 
@@ -4494,7 +4557,7 @@ compute.sumstats_pc = function(params_general, path_output = "", resolution = 10
 # applied to every data subset and processing the las files in it
 # TODO: should be split into smaller chunks
 
-process.datasubset = function(path_lastools, path_tmp, path_input, path_output, path_02_input, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step){
+process.datasubset = function(path_lastools, path_tmp, path_input, path_output, path_02_input, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, reclassify_noise = T, reclassify_ground = T, reclassify_building = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step){
   
   # remove temporary files (terra package)
   tmpFiles(old=TRUE, remove=TRUE)
@@ -4545,6 +4608,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       use.blast2dem = use.blast2dem
       # , logfile = logfile
     )
+    
     
     # original output path
     path_output_baseline = path_output
@@ -5035,7 +5099,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
             # TODO: this function should actually be made a locally adaptive one
 
             # Denoise to be implemented in open source
-            if(denoise == T){
+            if(reclassify_noise == T){
               step_processing = paste0("denoise")
               cat("\nNoise removal\n")
               step_noise = 4
@@ -5081,6 +5145,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 
             params_general$open_pipeline = params_general$open_pipeline +
               lasR::classify_with_sor()
+
             
             # if(write_intermediate) {
             #   params_general$open_pipeline + 
@@ -5115,7 +5180,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           # lasindex(params_general)
           cat("Amended file path returned\n")
           
-          if(reclassify == T){
+          if(reclassify_ground == T){
             
             step_processing = paste0("reclassify")
             cat("\nGround classification\n")
@@ -5139,6 +5204,33 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
               end_time = Sys.time()
               time_ground_refinement = as.numeric(difftime(end_time, start_time, units = "mins"))
             }
+          }
+          
+          if(reclassify_buildings == T){
+            
+            step_processing = paste0("buildings")
+            cat("\nBuildings classification\n")
+            start_time = Sys.time()
+            params_general = classify_buildings(params_general = params_general, 
+                                           path_output = "", 
+                                           update.path = TRUE, 
+                                           arguments_additional = "")
+            end_time = Sys.time()
+            time_ground_basic = as.numeric(difftime(end_time, start_time, units = "mins"))
+            
+            # TODO: add buildings classification in LAStools version?
+            # if(!is.voidstring(params_general$path_lastools))
+            # {
+            #   # new in v.48: refinement of ground classification
+            #   cat("\nRefinement of ground classification\n")
+            #   step_processing = paste0("refine ground classification")
+            #   start_time = Sys.time()
+            #   params_general = refine.ground(params_general = params_general, 
+            #                                  path_output = "",
+            #                                  update.path = T)
+            #   end_time = Sys.time()
+            #   time_ground_refinement = as.numeric(difftime(end_time, start_time, units = "mins"))
+            # }
           }
 
           if(height_lim > 0){
@@ -6295,8 +6387,8 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_ti
         }
         
         deduplicate = T
-        denoise = T
-        reclassify = T
+        reclassify_noise = T
+        reclassify_ground = T
         # path_output_laznorm = ""
         # size_buffer = ifelse(dir_current$name_acquisition %like% "pd_0.5", 100, ifelse(dir_current$name_acquisition %like% "pd_1", 50, size_buffer)) # forced extension of buffering for specific pulse density thinned point clouds # TODO: remove
         cat("Tile size:", size_tile, "\n")
@@ -6304,7 +6396,7 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_ti
         
         
         status = tryCatch(
-          process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, path_02_input = path_02_input, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile,deduplicate = deduplicate, denoise = denoise, reclassify = reclassify, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step),
+          process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, path_02_input = path_02_input, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile, deduplicate = deduplicate, reclassify_noise = reclassify_noise, reclassify_ground = reclassify_ground, reclassify_building = reclassify_building, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step),
           error = function(e){
             if(file.exists(logfile)){
               logfile_dt = data.table(path = path_output, issue = paste0("ERROR! Processing failed with message:", conditionMessage(e)))
