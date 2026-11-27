@@ -1072,36 +1072,22 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
   } else {
     cat("las2las.initial OpenSource version!\n")
 
-    # 
-    # # Clustering
-    # 
-    # # Importing outline, waiting for final find_clusters function
-    # outline = sf::read_sf("/home/karl/work/dev/ALS_processing_GCA/ALS_processing/test_outline/outline_localCRS.gpkg")
-    # 
-    # ctg <- lidR::readALScatalog(list.files(params_general$path_data, 
-    #                                        pattern = paste0("\\.", type_file), 
-    #                                        full.names = TRUE))
-    # opt_chunk_size(ctg) = 50
-    # 
-    # plot(ctg)
-    # 
-    # ctg = catalog_retile(ctg)
-    # 
-    # outline = st_transform(outline, st_crs(ctg))
-    # 
-    # ctg = catalog_intersect(ctg, outline$geom)
-    # ctg = clip_roi(ctg, outline)
-    # 
-
     angle_lim = NULL
-    opt_filter = "-filter_with_voxel .1"
-      # c(ifelse(!is.null(angle_lim), 
-      #                     paste("-drop_abs_scan_angle_above", 
-      #                           angle_lim, 
-      #                           sep = " "),
-      #                     ""),
-      #              "classification %out% 7 18",
-      #              "-drop_withheld")
+    
+    if (is.null(params_general$subsample_voxel_size)) {
+      subsampling = NULL
+    } else {
+      subsampling = lasR::sampling_voxel(res = params_general$subsample_voxel_size, 
+                                         filter = "NumberOfReturns == 1")
+    }
+    
+    opt_filter = c(ifelse(!is.null(angle_lim), 
+                          paste("-drop_abs_scan_angle_above", 
+                                angle_lim, 
+                                sep = " "),
+                          ""),
+                   "classification %out% 7 18",
+                   "-drop_withheld")
     
     opt_attributes = c("Intensity", "ReturnNumber", "NumberOfReturns", 
                        "Synthetic", "Withheld", "Classification", 
@@ -1115,6 +1101,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
     pipeline <-  lasR::reader(filter = opt_filter) + 
       lasR::set_crs(epsg_code) + 
       lasR::keep_attributes(opt_attributes) +
+      subsampling +
       lasR::write_copc(output_filename)
 
     ctg <- lidR::readALScatalog(list.files(params_general$path_data, 
@@ -1128,6 +1115,7 @@ las2las.initial = function(params_general, metadata, size_tile, path_output = ""
       ncores = params_general$n_cores,
       progress = T
     )
+
   }
   
   if (params_general$cleanup == T) {
@@ -1290,7 +1278,14 @@ find.clusters_data = function(params_general, path_output = "", nbclusters_force
           # copy buffer files (with clipping) into subdirectory
           cleanup_default = params_general_cluster$cleanup
           params_general_cluster$cleanup = F
-          call.lastools(command_lastools = "lasclip",arguments_lastools = paste0("-drop_withheld -poly ",file.path.system(type_os = params_general$type_os, path_outlines_buffer)," -odix _clipped"), params_general = params_general_cluster, path_output = params_general_cluster$path_data, type_output = "laz")
+          call.lastools(command_lastools = "lasclip", 
+                        arguments_lastools = paste0("-drop_withheld -poly ", 
+                                                    file.path.system(type_os = params_general$type_os, 
+                                                                     path_outlines_buffer),
+                                                    " -odix _clipped"), 
+                        params_general = params_general_cluster, 
+                        path_output = params_general_cluster$path_data, 
+                        type_output = "laz")
           params_general_cluster$cleanup = cleanup_default
           
           # remove extraneous files
@@ -2180,7 +2175,7 @@ lasduplicate = function(params_general, path_output = "",  update.path = TRUE){
     pipeline = lasR::reader_las(filter = params_general$opt_filter_read) + 
       
       # either keep provider's noise classification or reset it to class 1
-      params_general$opt_noise +
+      params_general$opt_overwrite_noise +
       
       # reset points not classified as water or built environment
       lasR::edit_attribute(filter = lasR::drop_class(c(6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)),
@@ -2221,7 +2216,7 @@ lasnoise = function(params_general, path_output = "", step = 3, isolated = 3, up
   
   # define output directory
   if(path_output == ""){
-    path_output = file.path(params_general$path_data,"lasnoise")
+    path_output = file.path(params_general$path_data, "lasnoise")
   }
   if(!dir.exists(path_output)) dir.create(path_output)
   
@@ -2250,30 +2245,37 @@ lasnoise = function(params_general, path_output = "", step = 3, isolated = 3, up
       cat("System command could not be completed\n")
     } 
     
+    if(params_general$cleanup == T) cleanup.files(params_general$path_data)
+    
+    if(update.path == TRUE){
+      cat("Amending file path and reindexing\n")
+      params_general$path_data = path_output
+      params_general$type_file = "laz"
+      # lasindex(params_general)
+      cat("Amended file path returned\n")
+    }
+    
   } else {
-    
-    files.input = list.files(path = params_general$path_data,
-                             pattern = paste0("\\.",params_general$type_file), full.names = TRUE)
-    ctg = readLAScatalog(files.input)
-    
-    opt_filter(ctg) = "-drop_withheld"
-    opt_chunk_buffer(ctg) = params_general$buffer
-    opt_output_files(ctg) = paste0(path_output,"/{*}")
-    opt_progress(ctg) = T
-    opt_laz_compression(ctg) = TRUE
-    classify_noise(ctg, ivf(res = step, n = isolated))
-  }
-  
-  if(params_general$cleanup == T) cleanup.files(params_general$path_data)
-  
-  if(update.path == TRUE){
-    cat("Amending file path and reindexing\n")
-    params_general$path_data = path_output
-    params_general$type_file = "laz"
-    # lasindex(params_general)
-    cat("Amended file path returned\n")
-    return(params_general)
-  }
+      cat("Open Source denoising step !!!!")
+      if (params_general$params_noise[[1]]$adaptive == TRUE)
+      {
+        params_general$open_pipeline = params_general$open_pipeline +
+          lasR::classify_with_ivf(step, isolated)
+        params_general$open_pipeline = params_general$open_pipeline +
+          lasR::classify_with_ivf(res=c(24,24,2), n = isolated * 2, class = 19L)
+        
+      } else{
+          params_general$open_pipeline = params_general$open_pipeline +
+            lasR::classify_with_sor(params_general$params_noise[[1]]$sor$k,
+                                    params_general$params_noise[[1]]$sor$m)
+          params_general$open_pipeline = params_general$open_pipeline +
+            lasR::classify_with_ivf(params_general$params_noise[[1]]$ivf$res, 
+                                    params_general$params_noise[[1]]$ivf$n)
+          # if(write_intermediate) {
+          #   params_general$open_pipeline + lasR::write_las()}
+      }
+    }
+  return(params_general)
 }
 
 # create DTM/DSM
@@ -2352,45 +2354,9 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
   }
 }
 
-# create DTM/DSM
-# step size is the initial [!] step size for the algorithm to find ground points (i.e. find ground points within a 10 by 10 m window for step = 10); 
-# sub is subwindows for refinement of ground characterization; 
-# if both are set to NULL, the default parameters are used
+# Classify buildings
 classify_buildings = function(params_general, path_output = "", update.path = TRUE, arguments_additional = ""){
   
-  # define output directory
-  if(path_output == ""){
-    path_output = file.path(params_general$path_data,"classify_buildings")
-  }
-  if(!dir.exists(path_output)) dir.create(path_output)
-  
-  # # pass lastools command to system
-  # if(!is.voidstring(params_general$path_lastools)){
-  #   return_system = system(
-  #     paste(
-  #       file.path.system(type_os = params_general$type_os, params_general$path_lastools, update.command_lastools("lasground_new", type_architecture = params_general$type_architecture)),
-  #       "-i",
-  #       file.path.system(type_os = params_general$type_os, params_general$path_data,paste0("*.",params_general$type_file)),
-  #       "-cores", params_general$n_cores,
-  #       ifelse(!is.null(step),paste0("-step ", round(step, 3)),""),
-  #       ifelse(!is.null(sub),paste0("-sub ", round(sub, 3)),""),
-  #       ifelse(!is.null(step),paste0("-bulge ", round(step/divisor_bulge, 3)),""),
-  #       arguments_additional,
-  #       "-odir", file.path.system(type_os = params_general$type_os, path_output),
-  #       "-olaz",
-  #       ifelse(params_general$type_os == "Linux","2>&1", "") # crucial for Linux where LAStools seems to write to stderr
-  #     )
-  #   )
-  #   
-  #   if(return_system == 0){
-  #     cat("Successful completion of system command\n")
-  #   } else {
-  #     # logfile_dt = data.table(path = as.character(NA), issue = paste0("WARNING! Lasground_new generated non-0 return."))
-  #     # fwrite(logfile_dt, file = params_general$logfile, append = T)
-  #     cat("System command could not be completed\n")
-  #   } 
-  # } else {
-    
     params_general$open_pipeline  = params_general$open_pipeline + 
       # compute planarity and sphericity in a 2.5 m radius
       lasR::geometry_features(r = 2.5, features = "ps") +
@@ -4557,17 +4523,13 @@ compute.sumstats_pc = function(params_general, path_output = "", resolution = 10
 # applied to every data subset and processing the las files in it
 # TODO: should be split into smaller chunks
 
-process.datasubset = function(path_lastools, path_tmp, path_input, path_output, path_02_input, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, reclassify_noise = T, reclassify_ground = T, reclassify_building = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step){
-  
+process.datasubset = function(path_lastools, path_tmp, path_input, path_output, path_02_input, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step, reclassify_ground = T, reclassify_buildings = T, params_noise, subsample_voxel_size = 0.25){
+
   # remove temporary files (terra package)
   tmpFiles(old=TRUE, remove=TRUE)
   
   has.path_lastools = check.path_lastools(path_lastools = path_lastools)
-  
-  # pathoutput = make_paths(option = "geotrees", path_root = )
-  # pathoutput$classification_supplied
-  # pathoutput$lastools
-  
+
   #if(has.path_lastools == T){
   if(T){
     # create a new temporary path and the output path
@@ -4593,7 +4555,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
     
     # determine the unique folders
     uniquefolders_toprocess = unique(folders_toprocess$folder_toprocess)
-    
+
     # now the actual processing can start
     params_general_baseline = data.table(
       path_lastools = path_lastools,
@@ -4605,7 +4567,9 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       n_cores = n_cores,
       buffer = size_buffer,
       cleanup = cleanup,
-      use.blast2dem = use.blast2dem
+      use.blast2dem = use.blast2dem,
+      params_noise = list(params_noise),
+      subsample_voxel_size = subsample_voxel_size
       # , logfile = logfile
     )
     
@@ -4796,8 +4760,8 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
     
     # currently a bit slow for a single file, but it is consistent
     clusters_data = find.clusters_data2(params_general = params_general_baseline, 
-                                       path_output = path_output_baseline, 
-                                       nbclusters_forced = nbclusters_forced)
+                                        path_output = path_output_baseline, 
+                                        nbclusters_forced = nbclusters_forced)
     
     cat("\nFound", length(clusters_data), "clusters\n")
     outlines_input = vect(file.path(params_general_baseline$path_data, "outlines_input.shp"))
@@ -5052,25 +5016,24 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nCustom processing\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
-          
+
           if(is.voidstring(params_general$path_lastools)){
             
             params_general$opt_filter_read = c("-drop_withheld
                                                -drop_duplicates
                                                -drop_return 0
                                                -drop_number_of_returns 0")
-            params_general$opt_reset_noise = TRUE
+
             ###############################################
             # reset or keep provider's noise classification
-            if (params_general$opt_reset_noise == TRUE) {
-              params_general$opt_noise = 
-                # reset provider's classification to 1
-                lasR::edit_attribute(filter = "Classification %in% 7 18", attribute = "Classification", value = 1)
+            if (params_general$params_noise[[1]]$overwrite == TRUE) {
+              overwrite_value = 1 # overwrite
             } else {
-              params_general$opt_noise = 
-                # set provider's noise classification to class 18 (high noise)
-                edit_attribute(filter = "Classification %in% 7 18", attribute = "Classification", value = 18)
+              overwrite_value = 18 # keep
             }
+            params_general$opt_overwrite_noise = lasR::edit_attribute(filter = "Classification %in% 7 18", 
+                                                                      attribute = "Classification", 
+                                                                      value = overwrite_value)
           }
 
           step_processing = paste0("deduplicate")
@@ -5083,103 +5046,47 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
           # Info to be implemented in open source
           lasinfo(params_general = params_general)
-          load(file.path(params_general$path_data,"summary_bytile.RData"))
-          load(file.path(params_general$path_data,"summary_full.RData"))
+          load(file.path(params_general$path_data, "summary_bytile.RData"))
+          load(file.path(params_general$path_data, "summary_full.RData"))
           
           if(!is.voidstring(params_general$path_lastools))
           {
             # Sorting to be implemented in open source
             params_general = call.lastools(command_lastools = "lassort",arguments_lastools = "", params_general = params_general)
-            
-            # noise removal
-            # 'step' gives the cube size (e.g., 4m), 'isolated' the number of points
-            # slightly modified since v.43: more conservative/less aggressive, as this now takes the 10th percentile of point densities across tiles and multiplies by 0.5 instead of the mean / step has been increased to 4m
-            # reasoning: the most critical part is not to accidentally remove ground points. Keeping a few birds or cloud points seems less of an issue in comparison, as they will be far more localized and easy to spot
-            # should have a small impact on scans with little pulse density variation or low density scans, where the minimum of 5 points is usually significant
-            # TODO: this function should actually be made a locally adaptive one
-
-            # Denoise to be implemented in open source
-            if(reclassify_noise == T){
-              step_processing = paste0("denoise")
-              cat("\nNoise removal\n")
-              step_noise = 4
-              density_points_cutoff = 0.5 * quantile(summary_bytile$density_points, 0.1)
-              isolated = as.integer(0.007 * density_points_cutoff * (3 * step_noise)^2)
-              if(isolated < 5) isolated = 5
-              params_general = lasnoise(params_general = params_general, step = step_noise, isolated = isolated)
-            }
-            
-            # Buffer removal to be implemented in open source
-            if(path_output_lazclean != ""){
-              step_processing = paste0("write laz files")
-              if(!dir.exists(path_output_lazclean)) dir.create(path_output_lazclean)
-              
-              # before outputting, we remove the buffers
-              call.lastools(command_lastools = "lastile",arguments_lastools = "-remove_buffer",params_general = params_general,path_output = path_output_lazclean, type_output = "laz", update.path = F, return.time = F)
-            }
           }
-          else{
+          
+          # noise removal
+          # 'step' gives the cube size (e.g., 4m), 'isolated' the number of points
+          # slightly modified since v.43: more conservative/less aggressive, as this now takes the 10th percentile of point densities across tiles and multiplies by 0.5 instead of the mean / step has been increased to 4m
+          # reasoning: the most critical part is not to accidentally remove ground points. Keeping a few birds or cloud points seems less of an issue in comparison, as they will be far more localized and easy to spot
+          # should have a small impact on scans with little pulse density variation or low density scans, where the minimum of 5 points is usually significant
+          # TODO: this function should actually be made a locally adaptive one
 
-            
-            # # Info to be implemented in open source
-            # lasinfo(params_general = params_general)
-            # load(file.path(params_general$path_data,"summary_bytile.RData"))
-            # load(file.path(params_general$path_data,"summary_full.RData"))
-            
-            # Noise removal
-            cat("Open source denoising ! ")
-            
-            # REALLY NEED THIS ?
-            path_output_denoising = file.path(params_general$path_data, "lasnoise")
-            if(!dir.exists(path_output_denoising)) dir.create(path_output_denoising)
-            # output_filename <- file.path(path_output_denoising, "*.laz")
-            
-            # files <- list.files(file.path.system(type_os = params_general$type_os, params_general$path_data), 
-            #                     pattern = "*.laz$", full.names = TRUE)
-            
-            # THESE PARAMETERS SHOULD BE STORED IN PARAMS_GENERAL
-            # step_noise = 4
-            # density_points_cutoff = 0.5 * quantile(summary_bytile$density_points, 0.1)
-            # isolated = as.integer(0.007 * density_points_cutoff * (3 * step_noise)^2)
-            # if(isolated < 5) isolated = 5
+          if (params_general$params_noise[[1]]$classify == TRUE){
+            step_processing = paste0("denoise")
+            cat("\nNoise removal\n")
 
-            params_general$open_pipeline = params_general$open_pipeline +
-              lasR::classify_with_sor()
-
+            step_noise = 4
+            density_points_cutoff = 0.5 * quantile(summary_bytile$density_points, 0.1)
+            isolated = as.integer(0.007 * density_points_cutoff * (3 * step_noise)^2)
+            if(isolated < 5) isolated = 5
+            params_general = lasnoise(params_general = params_general, 
+                                      step = step_noise, 
+                                      isolated = isolated)
+          }
+          
+          # Buffer removal to be implemented in open source
+          if(path_output_lazclean != ""){
+            step_processing = paste0("write laz files")
+            if(!dir.exists(path_output_lazclean)) dir.create(path_output_lazclean)
             
-            # if(write_intermediate) {
-            #   params_general$open_pipeline + 
-            #     lasR::write_las()}
-            
-            # if(second_noise_filtering) {
-            #   
-            #   params_general$opt_ivf_step = 4
-            #   params_general$opt_ivf_isolated = 5
-            #   
-            #   params_general$open_pipeline = params_general$open_pipeline + 
-            #     lasR::classify_with_ivf(res = params_general$opt_ivf_step, n = params_general$opt_ivf_isolated, class = 18L)
-            # }
-            
-            # pipeline = lasR::classify_with_ivf(res = step_noise, n = isolated, class = 18L) + 
-            #   lasR::write_las(output_filename)
-            # 
-            # ans = exec(pipeline, 
-            #            on = files, 
-            #            ncores = params_general$n_cores,  
-            #            progress = T)
+            # before outputting, we remove the buffers
+            call.lastools(command_lastools = "lastile",arguments_lastools = "-remove_buffer",params_general = params_general,path_output = path_output_lazclean, type_output = "laz", update.path = F, return.time = F)
           }
           
           time_ground_basic = as.numeric(NA)
           time_ground_refinement = as.numeric(NA)
-          
-          if(params_general$cleanup == T) cleanup.files(params_general$path_data)
-          
-          cat("Amending file path and reindexing\n")
-          params_general$path_data = path_output_denoising
-          params_general$type_file = "laz"
-          # lasindex(params_general)
-          cat("Amended file path returned\n")
-          
+
           if(reclassify_ground == T){
             
             step_processing = paste0("reclassify")
@@ -5241,6 +5148,9 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                                            height_lim = height_lim, 
                                            update.path = TRUE)
           }
+          
+          browser()
+          browser()
           
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nGet summary stats -- classify pipeline + rasters.initial in Open Source\n")
@@ -5363,6 +5273,9 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                               opt_cores = params_general$n_cores)
           }
 
+          browser()
+          browser()
+          
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nDTM creation with las2dem / blast2dem\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -6237,7 +6150,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 # - name_job: name of current job (in case data set is processed several times, use v1, v2, or similar)
 
 # TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
-process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_tiles, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, by_folder = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F){
+process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_tiles, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, by_folder = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F, params_noise, subsample_voxel_size){
   
   if(logfile != "" & dir.exists(dirname(logfile))){
     # new in v.50: create a log file for the most common issues
@@ -6387,16 +6300,16 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_ti
         }
         
         deduplicate = T
-        reclassify_noise = T
         reclassify_ground = T
-        # path_output_laznorm = ""
+        reclassify_buildings = F
+        
+                # path_output_laznorm = ""
         # size_buffer = ifelse(dir_current$name_acquisition %like% "pd_0.5", 100, ifelse(dir_current$name_acquisition %like% "pd_1", 50, size_buffer)) # forced extension of buffering for specific pulse density thinned point clouds # TODO: remove
         cat("Tile size:", size_tile, "\n")
         cat("Size buffer:", size_buffer, "\n")
         
-        
         status = tryCatch(
-          process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, path_02_input = path_02_input, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile, deduplicate = deduplicate, reclassify_noise = reclassify_noise, reclassify_ground = reclassify_ground, reclassify_building = reclassify_building, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step),
+          process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, path_02_input = path_02_input, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile,deduplicate = deduplicate, denoise = denoise, reclassify = reclassify, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step, reclassify_ground = reclassify_ground, reclassify_buildings = reclassify_buildings, params_noise = params_noise, subsample_voxel_size = subsample_voxel_size),
           error = function(e){
             if(file.exists(logfile)){
               logfile_dt = data.table(path = path_output, issue = paste0("ERROR! Processing failed with message:", conditionMessage(e)))
