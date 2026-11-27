@@ -2113,7 +2113,7 @@ lasinfo = function(params_general, path_output = ""){
   # whole-acquisition summary statistics
   summary_full = NULL
   if(!is.null(summary_bytile)){
-    cat("Computing summary statistics")
+    cat("Computing summary statistics\n")
     
     summary_full = data.table(
       n_files = nrow(summary_bytile),
@@ -2375,7 +2375,11 @@ lasground_new = function(params_general, path_output = "", step = NULL, sub = NU
     # params_general$opt_ptd_distance = 
     
     params_general$open_pipeline  = params_general$open_pipeline + 
-      lasR::classify_with_ptd(filter="-keep_last")
+      lasR::classify_with_ptd(res = params_general$params_ground[[1]]$ptd$res,
+                              angle = params_general$params_ground[[1]]$ptd$angle,
+                              distance = params_general$params_ground[[1]]$ptd$distance,
+                              filter= "-keep_last",
+                              spacing = params_general$params_ground[[1]]$ptd$spacing)
     
     # pipeline = lasR::classify_with_ptd() + lasR::write_las(output_filename)
     # 
@@ -4571,7 +4575,7 @@ compute.sumstats_pc = function(params_general, path_output = "", resolution = 10
 # applied to every data subset and processing the las files in it
 # TODO: should be split into smaller chunks
 
-process.datasubset = function(path_lastools, path_tmp, path_input, path_output, path_02_input, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step, reclassify_ground = T, reclassify_buildings = T, params_noise, subsample_voxel_size = 0.25){
+process.datasubset = function(path_lastools, path_tmp, path_input, path_output, path_02_input, type_file, addendum_name = "", metadata = NULL, retile = T, deduplicate = T, denoise = T, reclassify = T, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = c(25,100), estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", checkpoint_step, reclassify_ground = T, reclassify_buildings = T, params_noise, params_ground, subsample_voxel_size = 0.25){
 
   # remove temporary files (terra package)
   tmpFiles(old=TRUE, remove=TRUE)
@@ -4617,6 +4621,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
       cleanup = cleanup,
       use.blast2dem = use.blast2dem,
       params_noise = list(params_noise),
+      params_ground = list(params_ground),
       subsample_voxel_size = subsample_voxel_size
       # , logfile = logfile
     )
@@ -5134,8 +5139,8 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
           
           time_ground_basic = as.numeric(NA)
           time_ground_refinement = as.numeric(NA)
-
-          if(reclassify_ground == T){
+          
+          if(params_general$params_ground[[1]]$classify_noise == T){
             
             step_processing = paste0("reclassify")
             cat("\nGround classification\n")
@@ -5196,7 +5201,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                                            height_lim = height_lim, 
                                            update.path = TRUE)
           }
-          
+
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nGet summary stats -- classify pipeline + rasters.initial in Open Source\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -5318,9 +5323,6 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
                               opt_cores = params_general$n_cores)
           }
 
-          browser()
-          browser()
-          
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
           cat("\nDTM creation with las2dem / blast2dem\n")
           #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
@@ -6195,7 +6197,7 @@ process.datasubset = function(path_lastools, path_tmp, path_input, path_output, 
 # - name_job: name of current job (in case data set is processed several times, use v1, v2, or similar)
 
 # TODO: merge dir_structure with information_processing (lots of information is duplicated between the two) to simplify script
-process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_tiles, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, by_folder = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F, params_noise, subsample_voxel_size){
+process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_tiles, dir_processed, tmpdir_processing, path_lastools, metadata = NULL, resolution = 1, n_cores = 4, size_tile = 500, size_buffer = 25, retile = T, cleanup = T, nbclusters_forced = NULL, force.utm = F, remove.buffer = F, remove.vlr = F, remove.evlr = F, factor_rescale = NULL, force.recompute = F, path_output_lazclean = "", path_output_laznorm = "", types_dsm = c("tin","spikefree", "lspikefree"), params_dsmadaptive = data.table(multi = 3.1, slope = 1.75, offset = 2.1), resolution_sumstatspc = NULL, add.timestamp = F, estimate.laserpenetration = F, type_os = "automatic", type_architecture = "64", by_file = F, by_folder = F, perturbation_max = 0.1, timeout_lspikefree_max = 600, overwrite.crs = F, use.blast2dem = F, is.stdtime = NA, height_lim = 125, angle_lim = NULL, class_rm = c(), exclass_rm = c(), force.type_point = NULL, logfile = "", patterns_skip = c(), print.summary_job = F, params_noise, params_ground, subsample_voxel_size){
   
   if(logfile != "" & dir.exists(dirname(logfile))){
     # new in v.50: create a log file for the most common issues
@@ -6345,7 +6347,6 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_ti
         }
         
         deduplicate = T
-        reclassify_ground = T
         reclassify_buildings = F
         
                 # path_output_laznorm = ""
@@ -6354,7 +6355,7 @@ process.dataset = function(name_job, type_file, dir_dataset, dir_preprocessed_ti
         cat("Size buffer:", size_buffer, "\n")
         
         status = tryCatch(
-          process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, path_02_input = path_02_input, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile,deduplicate = deduplicate, denoise = denoise, reclassify = reclassify, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step, reclassify_ground = reclassify_ground, reclassify_buildings = reclassify_buildings, params_noise = params_noise, subsample_voxel_size = subsample_voxel_size),
+          process.datasubset(path_lastools = path_lastools, path_tmp = path_tmp, path_input = path_input, path_output = path_output, path_02_input = path_02_input, type_file = type_file, addendum_name = addendum_name, metadata = metadata, retile = retile,deduplicate = deduplicate, denoise = denoise, reclassify = reclassify, resolution = resolution, height_lim = height_lim, angle_lim = angle_lim, n_cores = n_cores, size_tile = size_tile, size_buffer = size_buffer, cleanup = cleanup, nbclusters_forced = nbclusters_forced, force.utm = force.utm, remove.buffer = remove.buffer, remove.vlr = remove.vlr, remove.evlr = remove.evlr, factor_rescale = factor_rescale, path_output_lazclean = path_output_lazclean, path_output_laznorm = path_output_laznorm, types_dsm = types_dsm, params_dsmadaptive = params_dsmadaptive, resolution_sumstatspc = resolution_sumstatspc, estimate.laserpenetration = estimate.laserpenetration, type_os = type_os, type_architecture = type_architecture, perturbation_max = perturbation_max, timeout_lspikefree_max = timeout_lspikefree_max, overwrite.crs = overwrite.crs, use.blast2dem = use.blast2dem, is.stdtime = is.stdtime, class_rm = class_rm, exclass_rm = exclass_rm, force.type_point = force.type_point, logfile = logfile, checkpoint_step = checkpoint_step, reclassify_ground = reclassify_ground, reclassify_buildings = reclassify_buildings, params_noise = params_noise, params_ground = params_ground, subsample_voxel_size = subsample_voxel_size),
           error = function(e){
             if(file.exists(logfile)){
               logfile_dt = data.table(path = path_output, issue = paste0("ERROR! Processing failed with message:", conditionMessage(e)))
